@@ -61,22 +61,29 @@ def test_every_journal_row_carries_a_closed_verdict(dry_run):
     assert [row["to"] for row in rows] == list(STATES[:8])
 
 
-def test_sixteen_birth_entries_fifteen_present_and_the_marker_absent(dry_run):
+def test_the_birth_entries_match_their_declaration_and_land_on_disk(dry_run):
     _run, node = dry_run
-    assert len(organs_mod.BIRTH_ORGANS) == 16
+    assert len(organs_mod.BIRTH_ORGANS) == organs_mod.DECLARED_BIRTH_ENTRIES
     expected = {Path(o.relpath).parts[1] for o in organs_mod.BIRTH_ORGANS
                 if o.present_at_birth}
     on_disk = {p.name for p in (node / ".intentops").iterdir()}
     assert expected <= on_disk
     assert not (node / ".intentops" / "halt.marker").exists()
-    assert len(expected) == 15
+    # The count is declared ONCE, beside the tuple it counts
+    # (DECLARED_BIRTH_ENTRIES). A literal repeated here is what broke this
+    # file three times in one day as three legs each added an organ; the
+    # invariant that matters at this altitude is that what is declared
+    # present landed, and what is declared absent did not.
+    for organ in organs_mod.BIRTH_ORGANS:
+        target = node / organ.relpath
+        assert target.exists() is organ.present_at_birth, organ.id
 
 
 def test_every_organ_declares_its_write_model(dry_run):
     _run, node = dry_run
     record = json.loads((node / ".intentops" / "genesis" / "organs.json")
                         .read_text(encoding="utf-8"))
-    assert record["birth_entry_count"] == 16
+    assert record["birth_entry_count"] == organs_mod.DECLARED_BIRTH_ENTRIES
     assert all(o["write_model"] in organs_mod.WRITE_MODELS
                for o in record["organs"])
     assert all(o["consumer"] for o in record["organs"])

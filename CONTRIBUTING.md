@@ -95,6 +95,13 @@ review is the section above.
 - Tests run under `tests/` with `pytest`, with no dependency on a live external
   service. A test that requires a running database, a real network endpoint, or a
   specific machine's hardware does not belong in this suite.
+- **Two host prerequisites the suite does depend on**, both stated rather than
+  assumed: **`git` on `PATH`** (several closure tests build a throwaway repository
+  to prove a bypass is shut) and a **resolvable home directory** (`USERPROFILE` on
+  Windows, `HOME` elsewhere) for the boot-corpus reader. Where `git` is absent the
+  tests that need it **skip by name**; where the home directory is unresolvable the
+  probe run reports a named corpus error rather than crashing. Neither is silently
+  tolerated, and neither turns a missing prerequisite into a pass.
 
 ## Style
 

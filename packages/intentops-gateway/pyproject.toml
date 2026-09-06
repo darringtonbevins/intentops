@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intentops-gateway"
+version = "0.1.0"
+description = "The IntentOps governed tool gateway: one JSON-RPC seam every tool call passes through, with bearer authentication and a per-harness backend allowlist ON by default."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "IntentOps contributors" },
+]
+
+# The dependency arrow points one way. The gateway depends on the core; the
+# core never depends on the gateway, and tests/test_dependency_direction.py
+# plus tests/test_gateway.py both say so rather than trusting it.
+#
+# It also depends on the MCP saddle, and that is deliberate: the MCP protocol
+# subset (revision, error codes, session shape) is IMPLEMENTED THERE, and a
+# second copy of a wire contract is a second thing to drift. This package
+# imports that module; it does not fork it.
+#
+# No web framework, no MCP SDK, no ASGI server. JSON-RPC over HTTP is
+# `http.server` plus `json`, and every dependency added to the one process
+# whose job is refusing unreviewed third-party artifacts is an argument
+# against itself.
+dependencies = [
+    "intentops",
+    "intentops-saddle-mcp",
+    "pyyaml",
+]
+
+[project.scripts]
+intentops-gateway = "intentops_gateway.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["intentops_gateway*"]

@@ -200,7 +200,6 @@ def assemble_corpus(
     An undeclared group key raises: a group nobody reads would make every probe
     over it report ABSENT for a reason unrelated to the boot corpus.
     """
-    home = home or Path.home()
     errors: List[str] = []
     files: List[Path] = []
     groups = spec or {}
@@ -211,6 +210,20 @@ def assemble_corpus(
             f"are {list(KNOWN_CORPUS_GROUPS)}. There is no default -- a group "
             "nobody reads makes every probe over it report ABSENT for the "
             "wrong reason")
+    # Resolve the home directory LAZILY, and only when a home-group entry is
+    # actually declared. ``Path.home()`` raises RuntimeError on a host with no
+    # resolvable home (a stripped CI container, a service account with no
+    # USERPROFILE/HOME), and a probe run that CRASHES tells the operator less
+    # than one that reports the corpus error and grades the rest.
+    unresolvable: set = set()
+    if home is None and (groups.get("home") or []):
+        try:
+            home = Path.home()
+        except RuntimeError:
+            errors.append(
+                "corpus: home directory unresolvable and a home-group entry "
+                "is declared")
+            unresolvable.add("home")
     bases: Dict[str, Optional[Path]] = {
         "workspace": Path(workspace),
         "boot_adjacent": Path(workspace),
@@ -223,6 +236,10 @@ def assemble_corpus(
         if not entries:
             continue
         base = bases[group]
+        if base is None and group in unresolvable:
+            # Already surfaced above as a LOUD corpus error. Skipping the group
+            # keeps the rest of the corpus readable; the error is what grades.
+            continue
         if base is None:
             raise ValueError(
                 f"boot_corpus names an '{group}' group but no {group} path is "

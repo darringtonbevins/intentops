@@ -1,0 +1,383 @@
+# The intent taxonomy -- what a node can be asked to do, and what each ask costs.
+#
+# PURPOSE
+#   The presence router is deterministic (Code rung): it turns an inbound
+#   message into an intent id, a tier, a handler name and a reaches-reality
+#   answer WITHOUT a model call. Everything it needs to do that lives in this
+#   file. A node that wants a different vocabulary edits this file; it does not
+#   edit the router, and it does not train anything.
+#
+#   An intent id is `<domain>.<action>` -- `file.delete`, `git.push`. That is
+#   the whole naming rule.
+#
+# WHY THE DOMAINS BELOW AND NOT SOMEBODY'S
+#   The nine domains here are the ones any governed agent has: files, code,
+#   queries, the host system, version control, data, its own governance,
+#   talking to its operator, and planning. Domains that belong to a particular
+#   line of work -- a matter, a ticket, an invoice, a patient -- are an ESTATE
+#   OVERLAY: a second taxonomy file the operator supplies, merged by id. They
+#   are deliberately absent here. A framework that ships one operator's job
+#   description makes every other operator delete something before they start.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. Single writer -- the operator, by hand,
+#   one process at a time. Nothing in the framework appends to it. The
+#   interaction JOURNAL is a different store with a different model
+#   (append-only JSONL under StoreLock, `.intentops/presence/interactions.jsonl`).
+#
+# EVERY FIELD BELOW IS LOAD-BEARING AND HAS NO DEFAULT.
+#   `intentops_core.presence.intents.load_taxonomy` HALTS on: an undeclared
+#   key, a missing field, a tier outside T0-T4, an undeclared escalation
+#   matcher, a `reversible: true` action above T0 that cannot say HOW it is
+#   reversed, and a `reversible: false` action that claims a rollback anyway.
+#   A taxonomy the loader half-understands produces a router that runs and is
+#   wrong about what it is allowed to do -- which is worse than one that
+#   refuses to load.
+#
+#   `domains: {}` is VALID and means "this node classifies nothing yet": every
+#   message then routes to the operator as an ask. A MISSING FILE is a HALT,
+#   because the loader cannot tell that from packaging that dropped it.
+
+schema: intent-taxonomy/v1
+as_of: "2026-09-06"
+
+# ---------------------------------------------------------------------------
+# Field reference (all required unless marked optional)
+#
+#   domain.description       one line, what this family of asks is
+#   domain.handler           the handler name the router returns for this
+#                            domain. A NAME, never an import path or a
+#                            callable: the router resolves nothing and imports
+#                            nothing, so a malformed taxonomy cannot execute
+#                            anything by being loaded.
+#   action.description       one line, in the operator's language
+#   action.tier              T0-T4, the authorization tier of the ACTION
+#   action.reversible        true|false -- can this be undone at all
+#   action.rollback          how it is undone. `null` only when the action is
+#                            irreversible, or T0 (a read undoes nothing)
+#   action.reaches_reality   does performing this reach outside the machine
+#   action.match             literal keywords, word-boundary matched,
+#                            case-insensitive. May be `[]` -- an intent with no
+#                            keywords is reachable only when a caller DECLARES
+#                            it by id, which is the honest state for an intent
+#                            nobody can phrase yet.
+#   action.handler           OPTIONAL override of the domain handler
+# ---------------------------------------------------------------------------
+
+domains:
+
+  file:
+    description: "Operations on files in the node's own workspace."
+    handler: filesystem
+    actions:
+      read:
+        description: "Read the contents of a file."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["read", "open", "show me the file"]
+      create:
+        description: "Create a new file."
+        tier: T1
+        reversible: true
+        rollback: "delete the created file"
+        reaches_reality: false
+        match: ["create file", "new file"]
+      modify:
+        description: "Modify an existing file."
+        tier: T1
+        reversible: true
+        rollback: "restore from version control or backup"
+        reaches_reality: false
+        match: ["edit", "modify", "rewrite"]
+      move:
+        description: "Move or rename a file."
+        tier: T1
+        reversible: true
+        rollback: "move it back to its original path"
+        reaches_reality: false
+        match: ["move", "rename"]
+      delete:
+        description: "Delete a file."
+        tier: T3
+        reversible: true
+        rollback: "restore from version control or backup"
+        reaches_reality: false
+        match: ["delete", "remove file"]
+
+  code:
+    description: "Reading, writing and reviewing source code."
+    handler: engineering
+    actions:
+      review:
+        description: "Review code without changing it."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["review", "critique"]
+      write:
+        description: "Write new code."
+        tier: T1
+        reversible: true
+        rollback: "revert the commit that introduced it"
+        reaches_reality: false
+        match: ["implement", "write code", "add a function"]
+      refactor:
+        description: "Restructure existing code without changing behaviour."
+        tier: T1
+        reversible: true
+        rollback: "revert the commit"
+        reaches_reality: false
+        match: ["refactor", "restructure"]
+      test:
+        description: "Write or run tests."
+        tier: T1
+        reversible: true
+        rollback: "revert the commit"
+        reaches_reality: false
+        match: ["test", "run the tests"]
+
+  query:
+    description: "Questions answered from what the node already holds."
+    handler: retrieval
+    actions:
+      search:
+        description: "Search the node's own stores or workspace."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["search", "find", "look for"]
+      explain:
+        description: "Explain something the node can cite."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["explain", "what is", "why does"]
+      status:
+        description: "Report the node's own state."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["status", "how are you", "what is running"]
+
+  system:
+    description: "The host the node runs on."
+    handler: host
+    actions:
+      inspect:
+        description: "Read host state: processes, disk, services."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["inspect", "check the host", "disk space"]
+      configure:
+        description: "Change the node's own configuration."
+        tier: T2
+        reversible: true
+        rollback: "restore the previous configuration from version control"
+        reaches_reality: false
+        match: ["configure", "set the option"]
+      restart:
+        description: "Restart a service the node owns."
+        tier: T2
+        reversible: true
+        rollback: "start the service again"
+        reaches_reality: false
+        match: ["restart", "bounce the service"]
+
+  git:
+    description: "Version control. The one domain where local and remote differ in kind."
+    handler: version_control
+    actions:
+      status:
+        description: "Read repository state."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["git status", "what changed"]
+      commit:
+        description: "Commit to the local repository."
+        tier: T1
+        reversible: true
+        rollback: "revert the commit"
+        reaches_reality: false
+        match: ["commit"]
+      push:
+        description: "Publish commits to a remote."
+        tier: T3
+        reversible: false
+        rollback: null
+        reaches_reality: true
+        match: ["push", "publish"]
+
+  data:
+    description: "Stores and datasets the node reads or writes."
+    handler: data
+    actions:
+      read:
+        description: "Read from a store."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["query the store", "select"]
+      write:
+        description: "Write to a store the node owns."
+        tier: T2
+        reversible: true
+        rollback: "restore the store from its last backup or journal"
+        reaches_reality: false
+        match: ["insert", "write to the store"]
+      delete:
+        description: "Delete rows or records."
+        tier: T4
+        reversible: false
+        rollback: null
+        reaches_reality: true
+        match: ["drop", "truncate", "purge"]
+
+  governance:
+    description: "The node's own governance surface."
+    handler: governance
+    actions:
+      audit:
+        description: "Read the audit trail or a ledger."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["audit", "show the ledger"]
+      approve:
+        description: "Record an operator's approval of a pending item."
+        tier: T0
+        reversible: false
+        rollback: null
+        reaches_reality: false
+        match: ["approve"]
+      reject:
+        description: "Record an operator's rejection of a pending item."
+        tier: T0
+        reversible: false
+        rollback: null
+        reaches_reality: false
+        match: ["reject", "deny"]
+      escalate:
+        description: "Surface an item to the operator for a ruling."
+        tier: T0
+        reversible: false
+        rollback: null
+        reaches_reality: false
+        match: ["escalate", "ask the operator"]
+      halt:
+        description: "Stand the node down."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["stand down", "stop everything"]
+
+  communication:
+    description: >-
+      Talking. Everything here reaches a person, which is why every action in
+      this domain declares reaches_reality true even when the tier is low: the
+      cost of an unwanted message is not paid by the machine.
+    handler: presence
+    actions:
+      answer:
+        description: "Answer the operator on a channel."
+        tier: T0
+        reversible: false
+        rollback: null
+        reaches_reality: true
+        match: ["reply", "answer"]
+      inform:
+        description: "Tell the operator something they did not ask for."
+        tier: T1
+        reversible: false
+        rollback: null
+        reaches_reality: true
+        match: ["notify", "let them know"]
+      send_outbound:
+        description: "Send a message to somebody who is not the operator."
+        tier: T3
+        reversible: false
+        rollback: null
+        reaches_reality: true
+        match: ["send to", "email them", "forward this"]
+
+  planning:
+    description: "Deciding what to do, before doing any of it."
+    handler: planning
+    actions:
+      plan:
+        description: "Produce a plan."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["plan", "how would you"]
+      prioritise:
+        description: "Rank competing work."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["prioritise", "prioritize", "what first"]
+      decompose:
+        description: "Break work into parts."
+        tier: T0
+        reversible: true
+        rollback: null
+        reaches_reality: false
+        match: ["break down", "decompose"]
+
+# ---------------------------------------------------------------------------
+# Escalation
+#
+# A rule here can only RAISE a tier, never lower one. That direction is
+# enforced in the loader, not merely intended: a rule that could lower a tier
+# is a rule that can be used to walk an action under the gate.
+#
+# `when` takes exactly one matcher from a CLOSED vocabulary, so an escalation
+# stays a deterministic comparison rather than a string somebody evaluates:
+#
+#   target_contains: [str, ...]     the target names one of these substrings
+#   action_in: [str, ...]           the action part of the intent id is one of these
+#   target_outside_workspace: true  the target resolves outside the node's workspace
+#
+# The reference implementation this generalises from wrote these as PROSE
+# conditions ("target contains 'prod' or 'production'"), which no code could
+# evaluate -- so they were documentation of an intent nothing enforced.
+# ---------------------------------------------------------------------------
+
+escalation:
+  - id: production-target
+    when:
+      target_contains: ["prod", "production"]
+    escalate_to: T3
+    reason: "the target names a production surface; production changes are human-gated"
+
+  - id: credential-target
+    when:
+      target_contains: ["credential", "secret", "token", "keystore"]
+    escalate_to: T4
+    reason: "the target looks like credential material"
+
+  - id: destructive-verb
+    when:
+      action_in: ["delete", "drop", "truncate", "purge"]
+    escalate_to: T4
+    reason: "a destructive verb; loss is the failure mode and it is not undone by an apology"
+
+  - id: outside-the-workspace
+    when:
+      target_outside_workspace: true
+    escalate_to: T3
+    reason: "the target is outside the node's own workspace, so a mistake lands on somebody else"

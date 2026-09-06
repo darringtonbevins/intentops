@@ -82,6 +82,9 @@ surface:
   - glob: "config/trust-revocation.json"
     reason: "the signed revocation list -- rollback protection depends on this file's integrity"
 
+  - glob: "packages/intentops-core/intentops_core/presence/**"
+    reason: "the operator rule and the one router -- who this node may ANSWER on a channel, and the classification that decides whether a message reaches a handler at all; a change here changes who can make it speak"
+
   # NODE-LOCAL by construction: a node's installed hook chain lives outside the
   # clone and is never tracked here, so tests/test_core_surface_globs.py
   # exempts this ONE glob BY NAME with this reason, rather than skipping any

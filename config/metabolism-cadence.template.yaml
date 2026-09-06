@@ -1,0 +1,159 @@
+# The metabolism cadence -- FOUR stages, every one of them declared, every one
+# of them switched OFF at birth.
+#
+# PURPOSE
+#   The metabolism is how a node turns what it read into what it knows: it
+#   ABSORBS raw material, DISTILLS it into candidates, CRYSTALLIZES the
+#   candidates that survive into stated patterns, and promotes a pattern into a
+#   METHOD once something actually calls it. This file is the single
+#   declaration of that cadence. One cadence file, N host bindings -- the same
+#   shape `config/loop-charters.template.yaml` uses for scheduling, and for the
+#   same reason: two hand-authored pipelines on two hosts drift, and nothing
+#   notices.
+#
+# THE ONE LESSON THIS FILE IS BUILT AROUND
+#   The reference implementation this generalises from ran a nightly cadence
+#   that reported "Success" over ZERO work for at least six days: one stage
+#   could not import its own entry point and exited on an unrecognised flag,
+#   and a second stamped its sub-checks as done without calling any of them.
+#   Both stages were green the entire time. So:
+#
+#     * `on_empty` is a CLOSED vocabulary of `warn` and `halt`. `ok` is not in
+#       it and cannot be written here. A stage that ran and produced nothing
+#       renders WARN, never OK -- zero output is a state, not a success.
+#     * `produces` is REQUIRED and non-empty. A stage that declares no
+#       countable cannot be told apart from a stage that did nothing, because
+#       there is nothing to count. A stage with no declared countable produces
+#       claims, not work.
+#     * A stage that could not READ its own inputs is DEGRADED, and DEGRADED
+#       outranks improvement. It never renders as a quiet zero, because a
+#       source that leaves the population makes every number look better.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. One writer -- the operator, by hand or
+#   through one explicit generator, one process at a time. No runtime writer
+#   appends a stage, so no lock is claimed here. The heartbeat this cadence
+#   feeds is a DIFFERENT store with a different model (append-only JSONL under
+#   StoreLock, `.intentops/metabolism/heartbeat.jsonl`).
+#
+#   A node's own copy of this file is created at genesis G3 as the birth organ
+#   `metabolism-cadence` (`.intentops/metabolism/cadence.yaml`). THIS file is
+#   the template that copy is taken from; edit the node's copy, not this one,
+#   unless you are changing what every future node is born with.
+#
+# EVERY STAGE IS BORN DISABLED. `enabled: false` is required on every stage and
+# the loader refuses a birth load carrying `enabled: true`. Switching a stage on
+# is a reviewed, dated operator act, never a side effect of adding a row.
+#
+# REQUIRED PER STAGE -- there are NO defaults. A missing load-bearing field is
+# a HALT, never a substituted sensible value: a reader that fills in a blank has
+# taken that field out of the population, and the one field nobody read is the
+# one nobody checks.
+#
+#   id                 one of absorb | distill | crystallize | method. All four
+#                      must be present, in that order. A cadence missing a stage
+#                      is indistinguishable from a cadence whose packaging
+#                      dropped one, and the two have opposite consequences
+#   purpose            one sentence a stranger can act on; not a category
+#   seam               null | command | callable -- see the seam vocabulary
+#   enabled            false at birth, always present
+#   produces           non-empty list of countable names this stage must move
+#   on_empty           warn | halt. NOT `ok` -- see above
+#   tier_ceiling       T0 | T1 | T2. T3 and T4 reach outside the machine and are
+#                      human-gated; a stage that fires with nobody present
+#                      cannot hold a human gate open. Same ceiling rule, and the
+#                      same reason, as a loop charter
+#
+# OPTIONAL PER STAGE
+#
+#   notes              free text
+#   tagout             a LOTO id. Present ONLY when this stage is deliberately
+#                      switched off with a stated way back. Its ABSENCE on a
+#                      disabled stage is the honest birth state: nothing is
+#                      tagged out, because nothing was ever on
+#   timeout_minutes    positive integer, when the seam is `command`
+#
+# THE SEAM VOCABULARY -- an undeclared value is a hard exit
+#
+#   null      The NullStage. It records the INTENT of the stage and produces
+#             nothing. This is what every stage is at birth, and it is not a
+#             placeholder for "unimplemented": it is the honest statement that
+#             this node has not been told how to absorb anything yet. A null
+#             stage's run is recorded, counted at zero, and rendered WARN if it
+#             was enabled -- never OK, and never silently omitted.
+#   command   A host command line. The cadence NEVER runs it in this seed;
+#             running it is the host saddle's job, and the exit code is
+#             checked, never assumed. `-m module` invocation is strongly
+#             preferred over a bare file path: a file invocation of a module
+#             using relative imports is exactly how the reference cadence's
+#             distil stage failed silently for six days.
+#   callable  A dotted Python path. Resolved by the caller, never by this file.
+#
+# THIS FILE SHIPS WITH EVERY STAGE PRESENT AND EVERY STAGE OFF, which is a true
+# statement about a new node: it has a metabolism, and nothing is feeding it.
+
+schema: metabolism-cadence/v1
+as_of: "2026-09-06"
+
+stages:
+  - id: absorb
+    purpose: >-
+      Gather raw material into the node's own corpus, from sources the operator
+      declared -- never from a source the node chose for itself.
+    seam: "null"
+    enabled: false
+    produces:
+      - absorbed
+    on_empty: warn
+    tier_ceiling: "T1"
+    notes: >-
+      A new node has NO sources. That is the honest starting condition, not a
+      gap to fill with a default source list. The reference implementation's
+      absorb stage read a specific operator's channels; those are estate
+      configuration and never ship. Adding a source is an operator act.
+
+  - id: distill
+    purpose: >-
+      Reduce absorbed material to candidates: a candidate is a claim with a
+      citation, not a summary.
+    seam: "null"
+    enabled: false
+    produces:
+      - candidates
+    on_empty: warn
+    tier_ceiling: "T1"
+    notes: >-
+      This is the stage that ran for six days at 0/0 reporting Success in the
+      reference implementation, behind an ImportError and an unrecognised CLI
+      flag. Its exit code is checked; a zero-throughput run is WARN.
+
+  - id: crystallize
+    purpose: >-
+      Promote a candidate that has survived into a stated pattern document,
+      with its evidence, its station, and the condition that would reopen it.
+    seam: "null"
+    enabled: false
+    produces:
+      - crystallized
+    on_empty: warn
+    tier_ceiling: "T1"
+    notes: >-
+      The document contract is enforced by
+      `intentops_core.metabolism.crystallize`, not by this stage. A pattern
+      with no `reopens_when` is refused there.
+
+  - id: method
+    purpose: >-
+      Promote a crystallized pattern to a METHOD by recording where it is
+      actually called, and surface the ones that have stalled at `described`.
+    seam: "null"
+    enabled: false
+    produces:
+      - methods
+    on_empty: warn
+    tier_ceiling: "T1"
+    notes: >-
+      Station is derived from LITERAL references only, so `referenced` is a
+      LOWER BOUND: a pattern re-implemented without naming its source is
+      invisible to it. `referenced` is not `operative`, and neither is a claim
+      about quality.

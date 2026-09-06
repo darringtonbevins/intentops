@@ -150,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_loops_parser(sub)
 
+    # Same additive-elsewhere seam, same reason: every metabolism verb, flag
+    # and behaviour lives in intentops_core.metabolism.cli.
+    from .metabolism.cli import add_parser as _add_metabolism_parser
+
+    _add_metabolism_parser(sub)
+
     r = sub.add_parser("route",
                        help="resolve a routing assignment (shape + estate ring)")
     r.add_argument("--shape", default=None,
@@ -271,9 +277,17 @@ def _cmd_stand_down(args: argparse.Namespace) -> int:
     return 0
 
 
-def _integrity_selftest() -> tuple:
-    """Adapt the integrity selftest to the (ok, report) shape verify expects."""
-    code = integrity_mod.selftest()
+def _integrity_selftest(repo_root: Path) -> tuple:
+    """Adapt the integrity selftest to the (ok, report) shape verify expects.
+
+    ``--repo-root`` was resolved and then IGNORED here, so from an installed
+    distribution the selftest read its fixture hasher out of site-packages and
+    raised a FileNotFoundError traceback instead of a verdict.
+    """
+    try:
+        code = integrity_mod.selftest(repo_root)
+    except integrity_mod.IntegrityError as exc:
+        return False, f"integrity: the selftest could not run -- {exc}"
     return code == 0, "integrity: every drift class can fire"
 
 
@@ -299,12 +313,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     if args.selftest:
         failures = 0
+        selftest_repo = _repo_root(args)
         for name, fn in (("trust_pin", None),
                          ("provenance", provenance_mod.selftest),
                          ("organs", organs_mod.selftest),
                          ("standdown", standdown_mod.selftest),
                          ("aliveness", aliveness_mod.selftest),
-                         ("integrity", _integrity_selftest),
+                         ("integrity",
+                          lambda: _integrity_selftest(selftest_repo)),
                          ("machine", machine_mod.selftest)):
             if fn is None:
                 # Named rather than omitted: a module with no selftest is a
@@ -624,6 +640,13 @@ def _cmd_loops(args: argparse.Namespace) -> int:
     return run_loops(args, Path(args.node_root))
 
 
+def _cmd_metabolism(args: argparse.Namespace) -> int:
+    """Delegate to the metabolism surface. All behaviour lives in its module."""
+    from .metabolism.cli import run as run_metabolism
+
+    return run_metabolism(args, Path(args.node_root))
+
+
 _COMMANDS = {
     "genesis": _cmd_genesis,
     "doctor": _cmd_doctor,
@@ -635,6 +658,7 @@ _COMMANDS = {
     "route": _cmd_route,
     "substrate": _cmd_substrate,
     "loops": _cmd_loops,
+    "metabolism": _cmd_metabolism,
 }
 
 

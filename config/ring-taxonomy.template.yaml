@@ -1,0 +1,84 @@
+# The ring taxonomy -- TEMPLATE. GENESIS SHIPS THIS EMPTY.
+#
+# WHAT THIS FILE IS. The map from a knowledge source's declared `source_type`
+# to the sensitivity RING that governs it. The MECHANISM that reads it
+# (packages/intentops-core/intentops_core/knowledge/rings.py) is framework
+# core and estate-independent. The ROWS are estate -- they name a particular
+# operator's sources -- so there are none here, and there never will be.
+#
+# `mapping: {}` is a TRUE STATEMENT about a new node, not an omission. A node
+# with an empty taxonomy rules on nothing, so the collection's own declared
+# sensitivity is the only classifier -- which is the safe direction. Genesis
+# copies this file to `.intentops/knowledge/ring-taxonomy.yaml`; the operator
+# fills it there.
+#
+# WHO READS IT, EXACTLY. The WRITE gate
+# (`knowledge.collections.gate_write`), and only when the store was
+# constructed with it:
+#
+#     store = NullVectorStore(registry, taxonomy=load_taxonomy(path))
+#
+# An explicit row participates in the strictest-wins merge with the
+# collection's declared sensitivity and the row's own carried ring, so a
+# ruling can only ever NARROW. Silence here -- an unlisted source type --
+# leaves the collection's declaration standing rather than quarantining every
+# write on a node whose taxonomy is still blank. The COVERAGE oracle does not
+# read this file at all; it measures the rings already stamped on rows.
+# Until 2026-09-06 nothing read it on the write path either, and filling it in
+# changed nothing: capture without a consumer.
+#
+# WRITE MODEL: single-writer-ceremony. The operator edits the node's copy by
+# hand, one process at a time. Nothing in the framework appends to it, and no
+# instrument rewrites it: changing a classification is a reviewed act, never
+# a side effect of measuring one.
+#
+# CLOSED VOCABULARY. A ring outside the ladder below is a HALT at load, never
+# a default of everything-applies. So is a missing `schema`, `as_of`,
+# `default_ring` or `mapping` key, an unparseable document, a duplicate
+# source type, or a blank one.
+#
+# THE LADDER (innermost to outermost):
+#
+#   R0 -- the node's own self-model, and anything credentials-adjacent.
+#         Inner voice only; never leaves the host.
+#   R1 -- sensitive operational knowledge: scoped, strategic, pre-decision.
+#         Inner voice only.
+#   R2 -- internal, non-sensitive operational knowledge. May cross to a model
+#         the operator has declared in-family.
+#   R3 -- broadly shareable internal content. May cross to a third-party
+#         model, but not to an untrusted context.
+#   R4 -- public, or already-public-safe. Safe everywhere.
+#   Q  -- QUARANTINE. Unclassified or external-origin, pending a ruling.
+#         Treated at least as strictly as R0 at every gate.
+#
+# WHY `default_ring: Q` IS NOT A FORMATTING CHOICE. A missing ring key and a
+# literal `Q` resolve IDENTICALLY at the gate, which is why key presence is
+# not classification and why the coverage oracle reports the two numbers
+# separately and never sums them. Setting `default_ring` to anything but `Q`
+# means unlisted content is no longer quarantined -- the loader will accept
+# it, and `RingTaxonomy.describe()` will say so loudly every time it is read.
+#
+# THE LESSON THIS FILE CARRIES. In the estate this seed was extracted from,
+# a classification key was treated as a backfill project rather than a
+# write-time obligation: one migration stamped the corpus, nothing watched it
+# afterwards, and classification fell to 24.4% while key-presence read 68.5%.
+# A new node starts at zero rows, so it can stamp at write time from its
+# first row and run the gate in `enforce` from birth -- the one genuine
+# advantage genesis has over migration. Take it.
+#
+# EXAMPLE ROWS (fictional, and commented out -- an example that loads is an
+# estate row wearing a documentation costume):
+#
+# mapping:
+#   public-docs: R4          # a vendor's published documentation
+#   operator-notes: R1       # the operator's own working notes
+#   node-self-corpus: R0     # this node's rules, rulings and design record
+
+schema: ring-taxonomy/v1
+as_of: "2026-09-06"
+
+# Unlisted source types resolve here. Q means "quarantine what nobody ruled on".
+default_ring: Q
+
+# ESTATE. Ships empty; the operator fills the node's own copy.
+mapping: {}

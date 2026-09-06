@@ -806,6 +806,30 @@ def g3_organs(ctx: GenesisContext) -> PhaseResult:
 
     notes: List[str] = []
     verdict = "PASS"
+
+    # Bind the belief-carrier specification. Until a node has one, the
+    # belief-currency instrument has no declared population and birth check 2
+    # can only answer UNPROBEABLE. The template is VALIDATED before anything is
+    # written, so a node never carries a binding its own loader would refuse.
+    from ..validation import belief_carriers as bc_mod
+
+    template = ctx.repo_root / bc_mod.TEMPLATE_RELPATH
+    if not template.is_file():
+        verdict = "WARN"
+        notes.append(f"no belief-carrier template at {template.as_posix()}: "
+                     "this node is born with no declared belief population")
+    else:
+        try:
+            binding = bc_mod.bind_template(
+                template, ctx.node_root / bc_mod.BINDING_RELPATH)
+            notes.append(
+                f"belief carriers bound: {len(binding.sources)} source(s) "
+                f"({', '.join(s.id for s in binding.sources)})")
+        except bc_mod.BeliefCarrierError as exc:
+            verdict = "WARN"
+            notes.append("the belief-carrier template is present but REFUSED "
+                         f"by its own loader: {exc}")
+
     if not record["identity_repo_conformant"]:
         verdict = "WARN"
         notes += record["identity_repo_findings"][:5]
@@ -889,7 +913,12 @@ def g5_founding(ctx: GenesisContext) -> PhaseResult:
     path = Path(ctx.identity_repo or ctx.node_root) / "identity" \
         / "founding-conversation.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# Founding conversation", "",
+    # `as_of:` is the machine-readable as-of the belief-currency instrument
+    # reads. The founding conversation is itself a belief carrier, and a birth
+    # text that tells a node every belief must state when it was last true has
+    # to model both halves. `- date:` stays for the human reader.
+    lines = [f"as_of: {_today()}", "",
+             "# Founding conversation", "",
              f"- node: `{ctx.designation}`", f"- date: {_today()}"]
     if ctx.dry_run:
         lines.append("- **DRY-RUN**: these are placeholders, not answers. A real "

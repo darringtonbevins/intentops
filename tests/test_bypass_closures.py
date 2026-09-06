@@ -44,6 +44,7 @@ BLIND SPOTS
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, List
@@ -163,10 +164,29 @@ NODE_LOCAL_GLOBS = {".intentops-hooks/**"}
 
 
 def test_every_declared_core_glob_matches_a_tracked_file() -> None:
+    # `git` is not guaranteed on PATH. Where it is absent, `subprocess.run`
+    # raises FileNotFoundError rather than returning non-zero, so the
+    # git-archive fallback below is unreachable without this check.
+    have_git = shutil.which("git") is not None
     proc = subprocess.run(
-        ["git", "ls-files"], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    if proc.returncode == 0:
+        ["git", "ls-files"], cwd=str(REPO_ROOT), capture_output=True,
+        text=True) if have_git else None
+    if proc is not None and proc.returncode == 0:
         tracked = proc.stdout.split()
+        # Plus files that EXIST and are not ignored but are not yet committed.
+        # Widened 2026-09-06: the population was `git ls-files` alone, which
+        # conflates "not staged yet" with "does not exist" -- so a leg could
+        # not declare a surface in the same session it wrote the files it
+        # covers, which is the house rule (new organ, its declarations, same
+        # session). An uncommitted file in the working tree IS something the
+        # glob is standing in front of. Nothing is weakened: a glob matching
+        # no file that exists at all is still dead, and an IGNORED file is
+        # still excluded, so a surface cannot be satisfied by build output.
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True)
+        if untracked.returncode == 0:
+            tracked += untracked.stdout.split()
     else:
         # A git-archive export (the F1 cold suite) has no .git: walk the tree instead,
         # skipping the same build artifacts the fence skips.
@@ -195,6 +215,8 @@ def test_every_declared_core_glob_matches_a_tracked_file() -> None:
 
 def test_a_renamed_core_file_still_appears_in_the_staged_set(tmp_path: Path) -> None:
     """`git mv` a core rule out of the surface: the OLD path must be listed."""
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH")
     repo = tmp_path / "clone"
     (repo / "genesis" / "imprint" / "rules").mkdir(parents=True)
     (repo / "docs").mkdir()

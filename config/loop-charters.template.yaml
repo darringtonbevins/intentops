@@ -100,6 +100,29 @@
 #     - "the file and line of each claimed mismatch"
 #     - "the command whose output shows the current behaviour"
 #   notes: "Files findings; never edits a doc on its own."
+#
+# - id: "nightly-metabolism"
+#   purpose: "Run one pass of the metabolism cadence -- absorb, distill,
+#             crystallize, method -- and append the heartbeat reading that says
+#             whether it moved anything."
+#   cadence:
+#     kind: daily
+#     at: "02:00"
+#   tier_ceiling: "T1"
+#   enabled: false
+#   budget_share: 0.15
+#   kill_switch: ".intentops/metabolism/cadence.disabled"
+#   requires_evidence:
+#     - "the per-stage verdict from the cadence run, including every SKIPPED
+#        stage -- a stage that leaves the record is how a pipeline comes to
+#        report success over zero work"
+#     - "the appended heartbeat reading, with its deltas against the previous
+#        dated entry"
+#     - "any alarm raised, with the threshold it fired against"
+#   notes: "The stages themselves live in the node's own cadence file
+#           (.intentops/metabolism/cadence.yaml) and are ALL DISABLED at birth,
+#           so enabling this charter alone still runs nothing. That is
+#           deliberate: two switches, and neither is flipped by adding a row."
 
 schema: loop-charters/v1
 as_of: "2026-09-06"

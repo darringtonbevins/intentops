@@ -81,7 +81,13 @@ __all__ = [
     "verdict_for",
 ]
 
+#: The names that carry a shell command in the REFERENCE host. Documentation,
+#: not a gate: :func:`classify_reaches_reality` fires the shell classes on any
+#: call carrying a non-empty ``command``, whatever it is called, because a
+#: backend tool named ``shell`` is a shell.
 SHELL_COMMAND_TOOLS: Tuple[str, ...] = ("Bash", "PowerShell", "Shell")
+#: These ARE name-gated: the file classes read ``file_path``, a field far more
+#: likely to appear innocently on an unrelated tool than ``command`` is.
 FILE_WRITE_TOOLS: Tuple[str, ...] = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 MCP_PREFIX = "mcp__"
 
@@ -559,16 +565,26 @@ def classify_reaches_reality(
     if disclosure:
         hits.append(disclosure)
 
-    if tool in SHELL_COMMAND_TOOLS:
-        command = str(tool_input.get("command") or "")
-        if command:
-            for fn in (classify_money, classify_irreversible_delete,
-                       classify_remote_push, classify_prod_change):
-                hit = (fn(command) if fn is classify_irreversible_delete
-                       else fn(command, ind))  # type: ignore[operator]
-                if hit:
-                    hits.append(hit)
-    elif tool in FILE_WRITE_TOOLS:
+    # The shell classes read the COMMAND, not the tool's NAME. Gating them on
+    # a name list was how a backend tool called `shell`, `run_command` or
+    # `exec` carried a force-push or an `rm -rf /` past a reading that catches
+    # the identical arguments under the name `Bash` -- observed 2026-09-06
+    # through the gateway, where an MCP backend's tool arrives under its own
+    # local name and never matches this list. `classify_outbound_comms`
+    # already reads the field unconditionally (see its shell branch), so the
+    # old asymmetry was internal to this module.
+    #
+    # SHELL_COMMAND_TOOLS survives as the documented set of names that carry
+    # a `command` in the reference host; it is no longer the gate.
+    command = str(tool_input.get("command") or "")
+    if command:
+        for fn in (classify_money, classify_irreversible_delete,
+                   classify_remote_push, classify_prod_change):
+            hit = (fn(command) if fn is classify_irreversible_delete
+                   else fn(command, ind))  # type: ignore[operator]
+            if hit:
+                hits.append(hit)
+    if tool in FILE_WRITE_TOOLS:
         target = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
         if target and _SECRET_PATH.search(target):
             hits.append(("T4", "writes a credential, secret or key file"))

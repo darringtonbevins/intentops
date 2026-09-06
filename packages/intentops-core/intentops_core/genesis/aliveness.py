@@ -176,15 +176,82 @@ def _check_probes(repo_root: Path, node_root: Path,
                         "truth_failures": truth})
 
 
-def _check_belief_currency(node_root: Path) -> CheckAnswer:
+def _check_belief_currency(node_root: Path,
+                           repo_root: Optional[Path] = None,
+                           identity_repo: Optional[Path] = None) -> CheckAnswer:
+    """Read the node's BOUND belief carriers, or say plainly that none are.
+
+    Before a binding existed this check could only answer UNPROBEABLE, because
+    running the instrument over an empty population scores a perfect reading by
+    construction -- the most flattering possible answer to a question nobody
+    asked. Genesis G3 now binds ``config/belief-carriers.template.yaml`` to
+    ``.intentops/config/belief-carriers.yaml``, so there is a DECLARED
+    population to read. An unbound node still answers UNPROBEABLE, in the same
+    words as before.
+    """
     q = "is every belief I carry still current?"
-    return CheckAnswer(
-        2, q, "still_true", "UNPROBEABLE",
-        "no belief-carrier specification is bound at birth. Running the "
-        "instrument over an empty population would score a perfect reading by "
-        "construction, so this stays in the denominator as unprobeable rather "
-        "than reporting a clean sweep of nothing",
-        {"population": 0})
+    try:
+        from ..validation import belief_carriers as bc_mod
+        from ..validation import still_true as st_mod
+    except Exception as exc:  # noqa: BLE001
+        return CheckAnswer(2, q, "still_true", "UNPROBEABLE",
+                           f"the belief-currency instrument is unavailable: {exc}")
+
+    binding_path = Path(node_root) / bc_mod.BINDING_RELPATH
+    if not binding_path.is_file():
+        return CheckAnswer(
+            2, q, "still_true", "UNPROBEABLE",
+            "no belief-carrier specification is bound at birth. Running the "
+            "instrument over an empty population would score a perfect reading "
+            "by construction, so this stays in the denominator as unprobeable "
+            "rather than reporting a clean sweep of nothing",
+            {"population": 0})
+    try:
+        binding = bc_mod.load_binding(binding_path)
+    except bc_mod.BeliefCarrierError as exc:
+        # A binding that EXISTS but does not LOAD is worse than an absent one:
+        # it looks accounted for.
+        return CheckAnswer(2, q, "still_true", "FAILED",
+                           "the belief-carrier binding is present but REFUSED "
+                           f"by its own loader: {exc}", {"population": 0})
+    try:
+        reading = bc_mod.take_bound_reading(binding, node_root=Path(node_root),
+                                            identity_repo=identity_repo,
+                                            repo_root=repo_root)
+    except Exception as exc:  # noqa: BLE001
+        return CheckAnswer(2, q, "still_true", "FAILED",
+                           f"{type(exc).__name__}: {exc}", {"population": 0})
+
+    ledger = Path(node_root) / st_mod.LEDGER_RELPATH
+    verdict, _ = st_mod.posture(reading, st_mod.load_history(ledger))
+    try:
+        st_mod.append_reading(reading, verdict, ledger)
+    except Exception as exc:  # noqa: BLE001
+        reading.unreadable.append(f"ledger append: {type(exc).__name__}: {exc}")
+
+    counts = {"population": reading.beliefs, "dated": reading.dated,
+              "undated": reading.undated,
+              "open_questions": reading.open_questions,
+              "sources": len(binding.sources), "posture": verdict}
+    base = (f"{bc_mod.summary_line(reading)} over {len(binding.sources)} "
+            f"bound source(s); posture {verdict}")
+    if reading.unreadable:
+        return CheckAnswer(2, q, "still_true", "UNPROBEABLE",
+                           base + "; unreadable: " + "; ".join(reading.unreadable),
+                           counts)
+    if reading.open_questions:
+        # An open question at birth means a carrier shipped stale. The
+        # instrument answered and the answer is bad, which is not the same
+        # thing as being unable to ask.
+        first = "; ".join(x.render() for x in reading.questions[:3])
+        return CheckAnswer(2, q, "still_true", "FAILED",
+                           base + " -- a carrier shipped stale: " + first, counts)
+    if reading.beliefs == 0:
+        return CheckAnswer(
+            2, q, "still_true", "UNPROBEABLE",
+            base + " -- every bound source is empty, and a clean sweep of "
+            "nothing is not a reading", counts)
+    return CheckAnswer(2, q, "still_true", "ANSWERED", base, counts)
 
 
 def _check_tagouts(node_root: Path) -> CheckAnswer:
@@ -335,7 +402,7 @@ def take_reading(
                       stood_down=is_stood_down(node_root))
     reading.answers = [
         _check_probes(repo_root, node_root, identity),
-        _check_belief_currency(node_root),
+        _check_belief_currency(node_root, repo_root, identity),
         _check_tagouts(node_root),
         _check_witness(node_root, designation),
         _check_gate(node_root),

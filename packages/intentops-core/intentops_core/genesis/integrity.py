@@ -675,10 +675,23 @@ def gate_session_start(
 # ---------------------------------------------------------------------------
 
 
-def _fake_repo(root: Path) -> Path:
-    """Build a minimal repo with a real hasher and a real manifest."""
-    real_repo = Path(__file__).resolve().parents[4]
+def _fake_repo(root: Path, repo_root: Optional[Path] = None) -> Path:
+    """Build a minimal repo with a real hasher and a real manifest.
+
+    ``repo_root`` is where the REAL hasher is read from. It defaults to the
+    source-checkout layout, which is wrong for an installed distribution --
+    ``scripts/`` is not package data, so the default resolves inside the
+    virtual environment and the read raises. A clean IntegrityError names the
+    remedy; a FileNotFoundError traceback reads like a corrupted install.
+    """
+    real_repo = Path(repo_root) if repo_root is not None         else Path(__file__).resolve().parents[4]
     hasher_src = real_repo / HASHER_RELPATH
+    if not hasher_src.is_file():
+        raise IntegrityError(
+            f"the imprint hasher is absent at {hasher_src}. The selftest "
+            "builds its fixture with the REAL hasher and will not substitute "
+            "a second, divergent one. Remedy: run this from a clone, or pass "
+            "--repo-root <clone>.")
     (root / HASHER_RELPATH.parent).mkdir(parents=True, exist_ok=True)
     (root / HASHER_RELPATH).write_bytes(hasher_src.read_bytes())
 
@@ -709,8 +722,12 @@ def _fake_repo(root: Path) -> Path:
     return root
 
 
-def selftest() -> int:
-    """Prove every drift class can actually fire. 0 = pass."""
+def selftest(repo_root: Optional[Path] = None) -> int:
+    """Prove every drift class can actually fire. 0 = pass.
+
+    ``repo_root`` names the clone the real hasher is read from; see
+    ``_fake_repo``. Without it the source-checkout layout is assumed.
+    """
     failures: List[str] = []
     checked: List[str] = []
 
@@ -721,7 +738,7 @@ def selftest() -> int:
             failures.append(label)
 
     with tempfile.TemporaryDirectory(prefix="intentops-integrity-") as tmp:
-        repo = _fake_repo(Path(tmp) / "repo")
+        repo = _fake_repo(Path(tmp) / "repo", repo_root)
         node = repo
 
         report = verify_imprint(repo, node, record=False)

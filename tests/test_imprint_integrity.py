@@ -253,3 +253,23 @@ def test_a_ledger_row_is_json_and_names_the_drifted_files(born: Path) -> None:
 
 def test_the_selftest_passes() -> None:
     assert selftest() == 0
+
+
+def test_the_selftest_honours_an_explicit_repo_root(tmp_path: Path) -> None:
+    """`--repo-root` reaches the fixture builder rather than being ignored."""
+    real = Path(__file__).resolve().parents[1]
+    assert selftest(real) == 0
+
+
+def test_the_selftest_refuses_by_name_when_the_hasher_is_out_of_reach(
+        tmp_path: Path) -> None:
+    """An installed distribution has no `scripts/`. That is a named refusal.
+
+    Before 2026-09-06 the fixture builder read the hasher from a hard-coded
+    source-checkout path, so this raised FileNotFoundError -- a traceback that
+    reads like a corrupted install rather than a verdict with a remedy.
+    """
+    with pytest.raises(IntegrityError) as excinfo:
+        selftest(tmp_path)
+    assert "imprint hasher is absent" in str(excinfo.value)
+    assert "--repo-root" in str(excinfo.value)

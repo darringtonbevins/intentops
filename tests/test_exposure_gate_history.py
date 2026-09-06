@@ -36,6 +36,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import importlib.util
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -363,6 +364,10 @@ def test_an_unreadable_history_refuses(tmp_path):
 
 
 def test_an_empty_repository_is_an_empty_population_not_a_clean_bill(tmp_path):
+    # An absent `git` raises FileNotFoundError before the returncode check
+    # below can fire, so the PATH lookup has to come first.
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH")
     if subprocess.run(["git", "init", "-q", str(tmp_path)],
                       capture_output=True).returncode != 0:
         pytest.skip("git is not available on this machine")

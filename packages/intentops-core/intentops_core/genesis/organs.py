@@ -1,7 +1,7 @@
 """G3 -- create every organ empty and valid, each declaring its write model.
 
 PURPOSE
-    A node at birth holds SIXTEEN entries under ``.intentops/``; a mature one
+    A node at birth holds TWENTY-FOUR entries under ``.intentops/``; a mature one
     accumulates hundreds, and the difference between the two numbers is the
     measure of what is carried versus what is accumulated. This module creates
     those entries, the ``.intentops-rules/`` boot corpus, and the identity-repo
@@ -33,9 +33,12 @@ BLIND SPOTS
     - The key-shape detector matches PEM armour headers only. A raw or
       DER-encoded key file carries no armour and is invisible to it; the
       ``.gitignore`` patterns are the second, independent control.
-    - The birth count of 16 is a DECLARED constant here, derived from the
-      design's tree plus the two ledgers the validation family brings with it.
-      If a later leg ships a seventeenth organ, this constant is the thing to
+    - The birth count of 24 is a DECLARED constant here, derived from the
+      design's tree, the two ledgers the validation family brings with it, the
+      presence layer's interaction journal, and the gateway's request ledger
+      and token record (added 2026-09-06 -- this note has now read 16 and 22 in
+      turn, and each time predicted exactly the correction that followed). If a
+      later leg ships a twenty-fifth organ, this constant is the thing to
       correct -- it will not notice on its own.
 """
 
@@ -115,15 +118,33 @@ WRITE_MODELS: Tuple[str, ...] = (
     "absent-at-birth",            # its PRESENCE is the signal
 )
 
-#: The sixteen entries a node holds at birth.
+#: How many entries a node holds at birth, DECLARED once.
+#:
+#: This constant exists because the count was previously written out in three
+#: places across two files -- the comment, the selftest, and the test suite --
+#: and a leg adding an eighteenth organ had to find all three. It found two.
+#: One number, adjacent to the tuple it counts, is the smallest change that
+#: keeps the tripwire: adding an organ without bumping this is a red selftest,
+#: which is exactly what a tripwire is for. It will not notice on its own.
+DECLARED_BIRTH_ENTRIES: int = 24
+
+#: The twenty-four entries a node holds at birth.
 #:
 #: Thirteen come from the design's own tree (genesis, trust, config, logs,
 #: core-review, approvals, witness, still-true, loto, register, locks,
 #: checkpoint.json, estate-cache) plus ``halt.marker``, which is named because
-#: its ABSENCE is the fact. The remaining two are the ledgers the validation
-#: family brings with it when it ships at birth: the node-local ordering
-#: write-through buffer and the responsiveness ledger, without which Still True
-#: raises questions nothing measures the answering of.
+#: its ABSENCE is the fact. Two are the ledgers the validation family brings
+#: with it when it ships at birth: the node-local ordering write-through buffer
+#: and the responsiveness ledger, without which Still True raises questions
+#: nothing measures the answering of. The seventeenth is the presence layer's
+#: interaction journal: a node that can be addressed at birth must be able to
+#: say at birth who addressed it. The last two are the metabolism's: its
+#: cadence -- a copy of the shipped template, every stage disabled -- and its
+#: heartbeat journal, without which a metabolism can report success over zero
+#: work for as long as nobody looks at the series. Two are the gateway's: its
+#: request ledger, and its bearer-token record -- the latter ABSENT at birth,
+#: because a token minted silently is a credential nobody was shown, and the
+#: gateway refuses every request until an operator mints one deliberately.
 BIRTH_ORGANS: Tuple[Organ, ...] = (
     Organ("genesis", ".intentops/genesis", "dir", "append-only-jsonl",
           "intentops doctor, intentops verify, --resume"),
@@ -150,6 +171,21 @@ BIRTH_ORGANS: Tuple[Organ, ...] = (
     Organ("wisdom", ".intentops/wisdom/orderings.jsonl", "file",
           "append-only-jsonl",
           "the ordering store's node-local write-through buffer", seed=""),
+    Organ("presence", ".intentops/presence/interactions.jsonl", "file",
+          "append-only-jsonl",
+          "the interaction journal: who addressed this node, on which surface, "
+          "and what was decided -- read by the operator, by an audit, and by "
+          "the answered-a-stranger breach check", seed=""),
+    Organ("metabolism-cadence", ".intentops/metabolism/cadence.yaml", "file",
+          "single-writer-ceremony",
+          "the metabolism cadence loader -- this node's own copy of the "
+          "shipped template, every stage disabled at birth; switching one on "
+          "is a reviewed, dated operator act"),
+    Organ("metabolism-heartbeat", ".intentops/metabolism/heartbeat.jsonl",
+          "file", "append-only-jsonl",
+          "the metabolism heartbeat: promotion flat-line, input-feed-dry and "
+          "registry-drift alarms over the dated series -- the only reader that "
+          "can see a pipeline reporting success over zero work", seed=""),
     Organ("loto", ".intentops/loto/LEDGER.yaml", "file",
           "single-writer-ceremony",
           "the tagout oracle: is anything safety-critical switched off"),
@@ -163,9 +199,38 @@ BIRTH_ORGANS: Tuple[Organ, ...] = (
           "continuity: where the node was when it last stopped"),
     Organ("estate-cache", ".intentops/estate-cache", "dir",
           "derived-regenerable", "the estate loader; rebuilt on demand"),
+    Organ("ring-taxonomy", ".intentops/knowledge/ring-taxonomy.yaml", "file",
+          "single-writer-ceremony",
+          "the operator's source_type -> ring ruling, read by the WRITE gate "
+          "(knowledge.collections.gate_write) when a store is constructed "
+          "with it. The coverage oracle does NOT read it -- it measures the "
+          "rings already stamped on rows. The operator edits it by hand, one "
+          "process at a time, and nothing appends to it"),
+    Organ("ring-coverage", ".intentops/knowledge/ring-coverage.jsonl", "file",
+          "append-only-jsonl",
+          "the coverage oracle: is the sensitivity classification still "
+          "complete", seed=""),
+    Organ("corpus-coverage", ".intentops/knowledge/corpus-coverage.jsonl",
+          "file", "append-only-jsonl",
+          "the coverage oracle: is every gathered corpus actually searchable",
+          seed=""),
+    Organ("gateway-requests", ".intentops/logs/gateway-requests.jsonl", "file",
+          "append-only-jsonl",
+          "the gateway's audit trail: every request it served AND every one it "
+          "refused. A log of refusals alone answers 'what was stopped' and "
+          "says nothing about 'what was allowed', which is the question an "
+          "audit actually asks", seed=""),
     Organ("halt-marker", ".intentops/halt.marker", "file", "absent-at-birth",
           "every tool call, ahead of everything else -- its PRESENCE is the "
           "stand-down", present_at_birth=False),
+    Organ("gateway-token", ".intentops/trust/gateway-auth.json", "file",
+          "single-writer-ceremony",
+          "the gateway's bearer check, on every request. ABSENT AT BIRTH BY "
+          "DESIGN: a token minted silently at birth is a credential nobody was "
+          "shown, which looks armed and is not. Until `intentops-gateway token "
+          "rotate` is run the gateway refuses every request -- fail-closed, "
+          "and loudly, with the remedy in the refusal",
+          present_at_birth=False),
 )
 
 #: The identity-repo skeleton. Every member present, empty and valid.
@@ -237,6 +302,51 @@ def _seed_loto_ledger(path: Path) -> None:
             return
         atomic_replace(path, yaml.safe_dump(new_ledger(), default_flow_style=False,
                                             sort_keys=False, allow_unicode=True))
+
+
+#: Where the shipped cadence template lives, relative to the repo root.
+METABOLISM_CADENCE_TEMPLATE = Path("config") / "metabolism-cadence.template.yaml"
+
+
+def _seed_metabolism_cadence(path: Path, repo_root: Path) -> None:
+    """Copy the shipped cadence template into the node.
+
+    HALTS when the template is missing. This is a PACKAGING failure, and the
+    alternative -- synthesising a minimal cadence here -- would put a second
+    definition of what a cadence is into the tree, where the two could drift
+    and only one of them would be reviewed. A node is born with the cadence
+    that shipped, or it is not born.
+    """
+    src = repo_root / METABOLISM_CADENCE_TEMPLATE
+    if not src.is_file():
+        raise Halt(
+            f"the metabolism cadence template is missing: {src}",
+            remedy="restore config/metabolism-cadence.template.yaml. Genesis "
+                   "will not synthesise a cadence: a second definition of the "
+                   "cadence would drift from the reviewed one",
+        )
+    shutil.copyfile(src, path)
+
+
+def _seed_ring_taxonomy(path: Path, repo_root: Path) -> None:
+    """Copy the shipped ring-taxonomy template, or generate an empty-and-valid one.
+
+    The template carries the prose a reader needs; the generated fallback
+    carries the same closed vocabulary, from the module that enforces it. Both
+    ship an EMPTY mapping -- a taxonomy that classifies nothing quarantines
+    everything, which is the safe direction for a node whose operator has
+    ruled on nothing yet.
+    """
+    if path.exists() and path.read_text(encoding="utf-8").strip():
+        return
+    template = repo_root / "config" / "ring-taxonomy.template.yaml"
+    if template.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(template, path)
+        return
+    from ..knowledge.rings import blank_taxonomy_document
+
+    _write_file(path, blank_taxonomy_document(_today()))
 
 
 def _seed_checkpoint(path: Path) -> None:
@@ -336,6 +446,13 @@ def create_identity_skeleton(
                     "root_fingerprint": operator_fingerprint,
                     "notification_posture": None,
                     "off_limits": [],
+                    # How the operator appears on each channel this node can be
+                    # addressed on. EMPTY at birth, and the emptiness is
+                    # load-bearing: the presence layer's operator rule answers
+                    # NOBODY until the operator says how to recognise them, so
+                    # a node that has not been told cannot be impersonated into
+                    # replying (presence/operator_rule.py).
+                    "channel_identities": {},
                 }, default_flow_style=False, sort_keys=False))
     _write_file(identity_repo / ".gitignore", _GITIGNORE)
     _write_file(identity_repo / "knowledge" / "MANIFEST.yaml",
@@ -447,6 +564,12 @@ def create_organs(
             _seed_loto_ledger(target)
         elif organ.id == "checkpoint":
             _seed_checkpoint(target)
+        elif organ.id == "ring-taxonomy":
+            _seed_ring_taxonomy(target, repo_root)
+        elif organ.id == "metabolism-cadence":
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _seed_metabolism_cadence(target, repo_root)
         elif not target.exists():
             _write_file(target, organ.seed or "")
 
@@ -593,10 +716,18 @@ def selftest() -> Tuple[bool, str]:
         expect("unparseable-member-found",
                any("unparseable" in f for f in findings))
 
-        # 6. the birth count is 16, one of them absent by design
-        expect("sixteen-birth-entries", len(BIRTH_ORGANS) == 16)
+        # 6. the birth count is 22, one of them absent by design
+        expect("birth-entry-count-matches-its-declaration",
+               len(BIRTH_ORGANS) == DECLARED_BIRTH_ENTRIES)
+        expect("every-organ-id-is-unique",
+               len({o.id for o in BIRTH_ORGANS}) == len(BIRTH_ORGANS))
+        # Named, not counted. This read `== 1` until 2026-09-06, when a second
+        # legitimately-absent organ (the gateway token) turned a true statement
+        # about the halt marker into a red selftest about arithmetic. What the
+        # check is FOR is that the marker's ABSENCE is the fact.
         expect("halt-marker-absent-at-birth",
-               sum(1 for o in BIRTH_ORGANS if not o.present_at_birth) == 1)
+               not any(o.present_at_birth for o in BIRTH_ORGANS
+                       if o.id == "halt-marker"))
         expect("every-organ-declares-a-known-write-model",
                all(o.write_model in WRITE_MODELS for o in BIRTH_ORGANS))
 

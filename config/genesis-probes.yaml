@@ -7,7 +7,8 @@
 # sect. 5.3): where is the gate, what is the ladder, who reviews a
 # core-mechanic change, what are the refusals, which imprint signed this
 # node, where does the node's own self live, who is it answerable to, how is
-# it switched off, what may it not do yet, and its own motto.
+# it switched off, what may it not do yet, its own motto, and what keeps the
+# claims in this corpus honest.
 #
 # STATUSES (the runner's vocabulary, unchanged from the reference
 # implementation): PASS / ABSENT / FAIL / DRIFT / STALE / ERROR.
@@ -45,6 +46,18 @@ boot_corpus:
     - "README.md"
     - "GENESIS.md"
     - "docs/GENESIS.md"
+    # Added 2026-09-06 with the presence organs. A node can be ADDRESSED from
+    # its first minute, so the rule about who it may answer has to reach a
+    # fresh window before the first message does -- not be discoverable by a
+    # tool call somebody thinks to make afterwards.
+    - "docs/PRESENCE.md"
+    # Added 2026-09-06 with the probe-coverage audit. The organ index: one
+    # pointer row per organ, so a fresh window can FIND each one. Before it,
+    # ten organs had a probe row whose fact reached no window -- ABSENT by
+    # construction, which is a packaging failure and not a truth failure.
+    # It is a pointer index and must stay one: prose belongs in the documents
+    # it points at, because every byte here is spent on every window.
+    - "docs/BOOT-ANCHORS.md"
   # Relative to the operator's home directory, if the host saddle carries a
   # cross-project floor file there. Optional -- absence here is not itself a
   # probe failure; individual probes decide whether they need it.
@@ -60,8 +73,12 @@ probes:
   - id: GEN-gate
     category: genesis
     question: "Where is the action gate, and what does S2 decide() return?"
+    covers: [gate, logs]
     expect_in_boot:
       any_of: ["SADDLE-CONTRACT.md", "gate", "decide("]
+    truth:
+      - path: "packages/intentops-core/intentops_core/gate/classify.py"
+        contains: "reaches_reality"
 
   # ---- the ladder and the classifier that outranks it -----------------
   - id: GEN-tiers
@@ -74,8 +91,12 @@ probes:
   - id: GEN-councils
     category: genesis
     question: "What are the two councils, and what does the ordering store do that a vote cannot?"
+    covers: [councils, wisdom]
     expect_in_boot:
       any_of: ["Posture Council", "Moral Compass", "ordering"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/wisdom/ordering.py"
+        contains: "reopens_when"
 
   # ---- the twelve refusals ---------------------------------------------
   - id: GEN-refusals
@@ -102,6 +123,7 @@ probes:
   - id: GEN-operator
     category: genesis
     question: "Who is this node answerable to, right now?"
+    covers: [trust]
     expect_in_boot:
       any_of: ["operator record", "operator-root",
                ".intentops/trust/operator-root.pub.json"]
@@ -116,6 +138,7 @@ probes:
   - id: GEN-standdown
     category: genesis
     question: "How does the operator switch this node off, with no argument from it?"
+    covers: [halt-marker]
     expect_in_boot:
       any_of: ["stand-down", "halt.marker"]
 
@@ -132,3 +155,436 @@ probes:
     question: "What is this node's stated motto or guiding light?"
     expect_in_boot:
       any_of: ["motto", "Be well", "guiding light"]
+
+  # ---- what keeps this corpus honest --------------------------------------
+  - id: GEN-doc-claims
+    category: genesis
+    question: "What instrument checks that the claims in this boot corpus name things that exist?"
+    expect_in_boot:
+      any_of: ["claims_check", "scripts/docs/claims_check.py"]
+    note: >-
+      The boot corpus is the node's own account of itself, and until
+      2026-09-06 nothing measured whether its claims resolved. Two of the
+      three documents told every stranger to run an install command that
+      could not work, and the test suite was green throughout because the
+      suite installs nothing. A fresh window should be able to find the
+      instrument that keeps its own corpus honest, which is why this is a
+      probe and not only a CI step. It checks path EXISTENCE and install
+      targets -- never whether the prose around a path is true.
+
+  # ---- who may it answer, and who does it merely surface -------------------
+  # The presence organs (2026-09-06). These three carry `truth` paths as well
+  # as boot expectations, so an ABSENT here means the anchor left the corpus
+  # while a FAIL means the organ itself moved. The two are different repairs.
+  - id: GEN-operator-rule
+    category: presence
+    question: "Who may this node ANSWER on a channel, and what happens to everybody else's message?"
+    expect_in_boot:
+      any_of: ["answers only its bound operator", "SURFACE_TO_OPERATOR"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/presence/operator_rule.py"
+        contains: "SURFACE_TO_OPERATOR"
+      - path: "packages/intentops-core/intentops_core/presence/operator_rule.py"
+        contains: "identity/operator/operator.yaml"
+
+  - id: GEN-presence-journal
+    category: presence
+    question: "Where is the record of every interaction this node has had, and what does it deliberately not hold?"
+    covers: [presence]
+    expect_in_boot:
+      any_of: ["interaction journal", ".intentops/presence/interactions.jsonl"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/presence/journal.py"
+        contains: ".intentops/presence/interactions.jsonl"
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: ".intentops/presence/interactions.jsonl"
+
+  - id: GEN-intent-taxonomy
+    category: presence
+    question: "What vocabulary of asks does this node recognise, and where is the one router that classifies them?"
+    expect_in_boot:
+      any_of: ["intent taxonomy", "config/intent-taxonomy.template.yaml"]
+    truth:
+      - path: "config/intent-taxonomy.template.yaml"
+        contains: "intent-taxonomy/v1"
+      - path: "packages/intentops-core/intentops_core/presence/router.py"
+        contains: "def route_inbound"
+
+  # ---- the metabolism ------------------------------------------------------
+  - id: GEN-metabolism-cadence
+    category: metabolism
+    # Renamed from GEN-metabolism 2026-09-06: a sibling leg registered that id
+    # in the `organs` category the same session. Two probes may ask about one
+    # organ; two probes may not share an id, because the ledger keys on it.
+    question: "How does this node turn what it read into what it knows, and what does a stage that ran and produced nothing render?"
+    expect_in_boot:
+      any_of: ["metabolism", "absorb", "zero output is a state"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/cadence.py"
+        contains: "\"absorb\", \"distill\", \"crystallize\", \"method\""
+      - path: "config/metabolism-cadence.template.yaml"
+        contains: "metabolism-cadence/v1"
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: ".intentops/metabolism/cadence.yaml"
+
+  - id: GEN-metabolism-heartbeat
+    category: metabolism
+    question: "What tells this node its metabolism has been reporting success over zero work, and which three alarms does it carry?"
+    expect_in_boot:
+      any_of: ["heartbeat", "flat-line", "registry drift"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/heartbeat.py"
+        contains: "promotion_flatline"
+      - path: "packages/intentops-core/intentops_core/metabolism/heartbeat.py"
+        contains: "input_feed_dry"
+      - path: "packages/intentops-core/intentops_core/metabolism/heartbeat.py"
+        contains: "registry_drift"
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: ".intentops/metabolism/heartbeat.jsonl"
+
+  - id: GEN-crystallize
+    category: metabolism
+    question: "What must a crystallized pattern document carry before this node will accept it?"
+    expect_in_boot:
+      any_of: ["crystallize", "crystallized pattern"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/crystallize.py"
+        contains: "reopens_when"
+      - path: "packages/intentops-core/intentops_core/metabolism/crystallize.py"
+        contains: "EVIDENCE_GRADES"
+
+  - id: GEN-assimilation
+    category: metabolism
+    question: "May this node run an artifact another system supplied, and which four verbs govern learning from one?"
+    expect_in_boot:
+      any_of: ["skill marketplace", "third-party artifact", "inspiration"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/assimilation.py"
+        contains: "ARTIFACT_KINDS"
+      - path: "packages/intentops-core/intentops_core/metabolism/assimilation.py"
+        contains: "CAPTURE"
+
+  - id: GEN-grok
+    category: metabolism
+    question: "What are the four phases of a deliberate pass over this node's own corpus, and what does a recorded cycle refuse to claim?"
+    expect_in_boot:
+      any_of: ["grok", "curate", "a plan is not a finding"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/grok.py"
+        contains: "\"curate\", \"pollinate\", \"percolate\", \"heal\""
+
+  # ---- what does it know, and how is that knowledge classified ------------
+  # The knowledge organs (2026-09-06). Like the presence rows above, these
+  # carry `truth` paths as well as boot expectations: ABSENT means the anchor
+  # left the boot corpus, FAIL means the organ itself moved. Different repairs.
+  - id: GEN-ring-taxonomy
+    category: knowledge
+    question: "How is this node's knowledge classified by sensitivity, and what happens to a piece of knowledge nobody classified?"
+    expect_in_boot:
+      any_of: ["ring taxonomy", "quarantines everything until its operator"]
+    truth:
+      - path: "config/ring-taxonomy.template.yaml"
+        contains: "default_ring: Q"
+      - path: "packages/intentops-core/intentops_core/knowledge/rings.py"
+        contains: "A MISSING RING KEY RESOLVES TO QUARANTINE, NEVER TO A RING"
+    covers: [ring-taxonomy, knowledge]
+    note: >-
+      The answer at birth is "everything is quarantined", because the taxonomy
+      ships empty. That is the safe direction and it is a true statement about
+      a node whose operator has ruled on nothing yet.
+
+  - id: GEN-absorber
+    category: knowledge
+    question: "How does something outside this node become something inside it, and what happens to a source it could not read?"
+    expect_in_boot:
+      any_of: ["absorber contract", "zero output is a state"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/knowledge/absorber.py"
+        contains: "not-attempted"
+      - path: "packages/intentops-core/intentops_core/knowledge/absorber.py"
+        contains: "ECOSYSTEM_RINGS"
+
+  - id: GEN-collections
+    category: knowledge
+    question: "What may write to a vector collection, and what does the write gate refuse?"
+    expect_in_boot:
+      any_of: ["collection is data, not DDL", "collection registry"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/knowledge/collections.py"
+        contains: "is not declared"
+      - path: "packages/intentops-core/intentops_core/substrate/schema.py"
+        contains: "intentops_enforce_embedding_dims"
+
+  - id: GEN-embedder
+    category: knowledge
+    question: "Where does this node get an embedding, and what does it do when it has no embedder?"
+    expect_in_boot:
+      any_of: ["null embedder that REFUSES", "embedding is a seam"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/knowledge/embedder.py"
+        contains: "class NullEmbedder"
+      - path: "estate/RESOURCES.yaml"
+        contains: "model-pool"
+    note: >-
+      A null embedder refuses rather than returning zero vectors: a zero vector
+      indexes, ranks and retrieves exactly like a real one, so the costume
+      would be indistinguishable from the measurement.
+
+  - id: GEN-knowledge-coverage
+    category: knowledge
+    question: "Is this node's classification still complete, and is what it gathered actually searchable?"
+    expect_in_boot:
+      any_of: ["ring-coverage.jsonl", "NOT-YET-ARMED"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/knowledge/coverage.py"
+        contains: "DEGRADED outranks improvement"
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: ".intentops/knowledge/ring-coverage.jsonl"
+    covers: [ring-coverage, corpus-coverage]
+
+  # =====================================================================
+  # Organ anchors (added 2026-09-06 with scripts/genesis/probe_coverage_check.py).
+  #
+  # The house rule is `new organ, new probe, same session`, and until this
+  # block existed the rule was enforced by memory. Every row below carries
+  # `covers:` -- the DECLARED link between a probe and the organ it anchors.
+  # Coverage is declared and never guessed: matching a probe to an organ by
+  # substring would false-pass on the first short token that happened to
+  # appear in a question, which is the blind spot the runner already
+  # publishes about its own matching. Once is enough.
+  #
+  # Each row also carries `truth:`, so the two failure classes stay apart:
+  # ABSENT says a fresh window cannot SEE the organ; FAIL says the organ has
+  # MOVED or is GONE.
+  # =====================================================================
+
+  - id: GEN-birth-organs
+    category: organs
+    question: "Which entries does this node hold at birth, and how is each one written?"
+    covers: [genesis, config, register, checkpoint, estate-cache]
+    expect_in_boot:
+      any_of: ["BIRTH_ORGANS", "write model"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: "BIRTH_ORGANS"
+      - path: "packages/intentops-core/intentops_core/genesis/machine.py"
+        contains: "def g3_organs"
+
+  - id: GEN-trust-chain
+    category: organs
+    question: "What pins this node's release root, and where do its PUBLIC trust projections live?"
+    covers: [trust]
+    expect_in_boot:
+      any_of: ["release-root", "release root", ".intentops/trust/"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/genesis/trust_pin.py"
+        contains: "release-root"
+      - path: "config/trust-roots.yaml"
+        contains: "roots"
+
+  - id: GEN-integrity
+    category: organs
+    question: "How does this node tell whether the rules it is reading are the ones the project published?"
+    expect_in_boot:
+      any_of: [".intentops-rules", "IMPRINT-MANIFEST"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/genesis/integrity.py"
+        contains: ".intentops-rules"
+      - path: "genesis/imprint/IMPRINT-MANIFEST.yaml"
+        contains: "schema"
+
+  - id: GEN-mcp-saddle-token
+    category: organs
+    question: "Where does the MCP saddle keep its bearer record, and what does that record never contain?"
+    covers: [trust]
+    expect_in_boot:
+      any_of: ["mcp-saddle-auth.json", "MCP saddle"]
+    truth:
+      - path: "packages/intentops-saddle-mcp/intentops_saddle_mcp/auth.py"
+        contains: "mcp-saddle-auth.json"
+
+  - id: GEN-values-council
+    category: organs
+    question: "Who reviews a change to this node's own core, and where is that review recorded?"
+    covers: [governance, core-review]
+    expect_in_boot:
+      any_of: ["core-review", "values council", "Values Council"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/governance/values_council.py"
+        contains: "core-review"
+
+  - id: GEN-approvals-queue
+    category: organs
+    question: "Where do decisions awaiting the operator wait, and what happens when one expires?"
+    covers: [approvals]
+    expect_in_boot:
+      any_of: [".intentops/approvals", "approval"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/approvals/queue.py"
+        contains: "approval"
+
+  - id: GEN-witness-register
+    category: organs
+    question: "What does this node believe is fixed but has not proven?"
+    covers: [witness]
+    expect_in_boot:
+      any_of: ["OPEN-UNVERIFIED", "witness"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/validation/witness.py"
+        contains: "OPEN-UNVERIFIED"
+
+  - id: GEN-self-probe
+    category: organs
+    question: "Which instrument answers whether a fresh window can still find each organ, and what do its statuses mean?"
+    covers: [continuity]
+    expect_in_boot:
+      any_of: ["ABSENT", "self probe", "self_probe"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/continuity/self_probe.py"
+        contains: "ABSENT"
+      - path: "scripts/genesis/probe_coverage_check.py"
+        contains: "coverage_exemptions"
+
+  - id: GEN-belief-currency
+    category: organs
+    question: "Which belief carriers does this node watch, what dates each one, and what would make it false?"
+    covers: [still-true, validation]
+    expect_in_boot:
+      any_of: ["belief-carriers", "EVIDENCE-MOVED", "belief carrier"]
+    truth:
+      - path: "config/belief-carriers.template.yaml"
+        contains: "belief-carriers/v1"
+      - path: "packages/intentops-core/intentops_core/validation/belief_carriers.py"
+        contains: "belief-carriers/v1"
+      - path: "packages/intentops-core/intentops_core/validation/still_true.py"
+        contains: "EVIDENCE-MOVED"
+
+  - id: GEN-responsiveness
+    category: organs
+    question: "When a falsifier tripped, did anyone ANSWER -- and how many questions closed with no event at all?"
+    covers: [responsiveness]
+    expect_in_boot:
+      any_of: ["silent close", "responsiveness"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/validation/responsiveness.py"
+        contains: "silent close"
+      - path: "packages/intentops-core/intentops_core/genesis/organs.py"
+        contains: ".intentops/responsiveness/ledger.jsonl"
+
+  - id: GEN-tagout-ledger
+    category: organs
+    question: "Is anything safety-critical switched off, and what is the stated way back on?"
+    covers: [loto]
+    expect_in_boot:
+      any_of: ["tagout", "reenergize", "LEDGER.yaml"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/loto/ledger.py"
+        contains: "reenergize"
+
+  - id: GEN-routing-policy
+    category: organs
+    question: "Which class of work goes to which tier of model, and where is the seam a model call would sit behind?"
+    covers: [routing]
+    expect_in_boot:
+      any_of: ["routing-policy", "routing policy", "NullProvider"]
+    truth:
+      - path: "config/routing-policy.yaml"
+        contains: "routing-policy/v1"
+      - path: "packages/intentops-core/intentops_core/routing/policy.py"
+        contains: "routing-policy/v1"
+
+  - id: GEN-loops
+    category: organs
+    question: "What autonomous loops may this node run, and how is each one's budget bounded?"
+    covers: [loops]
+    expect_in_boot:
+      any_of: ["loop-charters", "loop charter"]
+    truth:
+      - path: "config/loop-charters.template.yaml"
+        contains: "loop-charters/v1"
+      - path: "packages/intentops-core/intentops_core/loops/charters.py"
+        contains: "loop-charters/v1"
+
+  - id: GEN-alignment-journal
+    category: organs
+    question: "Where is the record of this node's alignment with its operator, and what bar must it pass before the twin is authority?"
+    covers: [alignment]
+    expect_in_boot:
+      any_of: ["alignment", "calibration"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/alignment/calibration.py"
+        contains: "JOURNAL_RELPATH"
+      - path: "config/alignment-interview.template.yaml"
+        contains: "schema"
+
+  - id: GEN-substrate-schema
+    category: organs
+    question: "What runs underneath this node, and which schema versions have been applied?"
+    covers: [substrate]
+    expect_in_boot:
+      any_of: ["schema_migrations", "substrate"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/substrate/schema.py"
+        contains: "schema_migrations"
+
+  - id: GEN-knowledge-rings
+    category: organs
+    question: "Where does this node keep what it knows, and how is a row's sensitivity classified?"
+    covers: [knowledge]
+    expect_in_boot:
+      any_of: ["knowledge/MANIFEST.yaml", "rings", "knowledge-manifest"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/knowledge/rings.py"
+        contains: "ring"
+
+  - id: GEN-metabolism
+    category: organs
+    question: "What does this node do on its own cadence, and how does a stage that produced nothing render?"
+    covers: [metabolism, metabolism-cadence, metabolism-heartbeat]
+    expect_in_boot:
+      any_of: ["metabolism", "heartbeat", "cadence"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/metabolism/heartbeat.py"
+        contains: "heartbeat"
+
+  - id: GEN-gateway
+    category: organs
+    question: "Where does a tool call from another harness meet this node, what credential must it carry, and what happens to a tool nobody classified?"
+    covers: [gateway-token, gateway-requests]
+    expect_in_boot:
+      any_of: ["gateway", "governed tool gateway"]
+    truth:
+      - path: "packages/intentops-gateway/intentops_gateway/tokens.py"
+        contains: "gateway-auth"
+      - path: "packages/intentops-gateway/intentops_gateway/backends.py"
+        contains: "default-deny"
+      - path: "packages/intentops-gateway/intentops_gateway/tiers.py"
+        contains: "UNTAGGED_TIER"
+      - path: "config/gateway-policy.yaml"
+        contains: "gateway-policy/v1"
+    note: >-
+      Three answers, and the third is the one a stranger gets wrong. The
+      credential is a per-node bearer token stored as a DIGEST under
+      `.intentops/trust/gateway-auth.json`, absent at birth, and no token is
+      401 with no anonymous fall-through. Backends are default-deny per
+      harness, read from `config/gateway-policy.yaml`. And a tool carrying no
+      declared tier classifies T4 and is REFUSED, never T2 -- the reference
+      implementation this generalises from defaulted an unclassified tool to
+      its backend's tier and auto-approved it, which is the exposure the
+      public default-deny ruling closes.
+
+# ---------------------------------------------------------------------------
+# Members of the probe-coverage population that legitimately owe no probe row.
+#
+# An exemption carries a REASON, always. "Will do it later" is a deferral, not
+# a reason, and the coverage checker refuses a blank one -- an unverifiable
+# exemption is worse than none, because it looks accounted for.
+#
+# Consumer: scripts/genesis/probe_coverage_check.py.
+# ---------------------------------------------------------------------------
+coverage_exemptions:
+  locks: >-
+    Reserved for lock files and normally EMPTY. A StoreLock sibling lands
+    beside its own store, not here, so nothing reads this directory and a
+    fresh window that could not find it would lose nothing. The stores it
+    would otherwise serve are each probed in their own right.

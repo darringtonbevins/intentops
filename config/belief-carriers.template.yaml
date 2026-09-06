@@ -1,0 +1,139 @@
+# The belief-carrier specification -- which of this node's own carriers the
+# belief-currency instrument reads, and what would make each of them false.
+#
+# A belief carrier states TWO things beside the belief: when it was last true
+# (an as-of) and what would make it false (a falsifier). Rulings, anchor rows,
+# briefings and memory topics decay in WEEKS, and most systems have a rule for
+# that staleness and no sense for it. This file is the sense: it declares the
+# population that `intentops_core.validation.still_true` reads.
+#
+# THIS FILE IS A TEMPLATE. Genesis G3 copies it to the node's own bound copy at
+# `.intentops/config/belief-carriers.yaml` and stamps `bound_at`. A NODE BINDS
+# ITS OWN CARRIERS: as it grows anchor documents, briefings and memory topics,
+# it adds them here. The two sources shipped below are the two every node has
+# at birth -- its own ordering store and its own founding conversation -- so
+# the population is never empty by construction. That matters: an empty
+# population scores a perfect reading, which is the most flattering possible
+# answer to a question nobody asked.
+#
+# WRITE MODEL: reviewed, human-authored config -- not a store. The bound copy
+# is written once by G3 under locked fresh-read read-modify-write (StoreLock +
+# atomic_replace), which is the write model its containing organ
+# (`.intentops/config`) declares at birth.
+#
+# EVERY FIELD BELOW IS LOAD-BEARING AND NONE HAS A DEFAULT. The loader
+# (`intentops_core/validation/belief_carriers.py`) HALTS on a missing one,
+# because a specification that half-understands its own sources produces a
+# reading that runs and is wrong.
+#
+# Schema: belief-carriers/v1.
+
+schema: belief-carriers/v1
+as_of: "2026-09-06"
+
+# ---------------------------------------------------------------------------
+# The carrier kinds, and the as-of extractor each one uses.
+#
+# These are checked against the reader's own table at load time: a declared
+# extractor that is not the one actually running is a comment wearing a schema.
+# ---------------------------------------------------------------------------
+kinds:
+
+  ruling:
+    # An append-only JSONL ruling store. One belief per active record.
+    as_of: record-field:date
+    subjects: the path-like tokens of each record's `evidence` and `instrument`
+    falsifiers_available: [EVIDENCE-MOVED, SUBJECT-GONE, UNDATED, CONFLICT]
+
+  anchor:
+    # `## heading` blocks carrying an `[OBSERVED <date>]` stamp. One belief per
+    # stamped block; the as-of is the LATEST stamp in the block, because a row
+    # re-observed is a row re-dated. UNSTAMPED BLOCKS ARE OUTSIDE THE
+    # POPULATION -- a published blind spot, not an oversight.
+    as_of: observed-stamp
+    subjects: the backticked file paths the block names
+    falsifiers_available: [EVIDENCE-MOVED, SUBJECT-GONE, UNDATED]
+
+  briefing:
+    # A whole document as one belief. The as-of is a front-matter `as_of:`
+    # scalar or the latest `[OBSERVED <date>]` anywhere in it.
+    as_of: document-stamp
+    subjects: the backticked file paths the document names
+    falsifiers_available: [EVIDENCE-MOVED, SUBJECT-GONE, UNDATED]
+
+  memory-topic:
+    # A directory of topic files whose FILENAME carries the date. The filename
+    # is used rather than modification time on purpose: mtime is a rewrite
+    # signature, not a re-observation.
+    as_of: filename-date
+    subjects: the backticked file paths each topic names
+    # EVIDENCE-MOVED is deliberately absent: no commit history is read for a
+    # topic directory, so movement is not observable there.
+    falsifiers_available: [SUBJECT-GONE, UNDATED]
+
+# ---------------------------------------------------------------------------
+# The falsifiers, for the reader of this file.
+#
+#   EVIDENCE-MOVED  a subject this belief rests on was committed AFTER the
+#                   as-of. Read from commit history and from nothing else,
+#                   which is why a source may only declare it when its base is
+#                   under version control.
+#   SUBJECT-GONE    a subject the belief names is no longer on disk.
+#   UNDATED         the carrier has no parseable as-of: a belief with no
+#                   half-life cannot be re-asked on time.
+#   CONFLICT        two active rulings disagree. Delegated whole to the
+#                   ordering store's own `conflicts()`, so only rulings
+#                   carrying predicates are seen.
+#
+# A tripped falsifier is a QUESTION owed a human, never an answer. Nothing here
+# auto-supersedes and no `reopens_when` is ever fabricated: inventing a way back
+# for a ruling whose author stated none manufactures exactly the false
+# confidence the instrument exists to prevent.
+# ---------------------------------------------------------------------------
+
+sources:
+
+  - id: node-orderings
+    kind: ruling
+    label: this node's own ordering store
+    # `base` says which root `path` is relative to: node | identity-repo | repo.
+    base: node
+    path: .intentops/wisdom/orderings.jsonl
+    # The node root is not a version-controlled tree, so EVIDENCE-MOVED cannot
+    # fire over it and is NOT declared. A falsifier that cannot fire is worse
+    # than none -- it looks accounted for.
+    version_control: none
+    falsifiers: [UNDATED, SUBJECT-GONE, CONFLICT]
+
+  - id: founding-conversation
+    kind: briefing
+    label: the founding conversation, recorded verbatim at G5
+    base: identity-repo
+    path: identity/founding-conversation.md
+    # A freshly-created identity repository is not a git repository until
+    # somebody makes it one. When a node's identity repo IS under version
+    # control, change this to `git` and EVIDENCE-MOVED becomes declarable.
+    version_control: none
+    falsifiers: [UNDATED, SUBJECT-GONE]
+
+# ---------------------------------------------------------------------------
+# What a node adds as it grows. These are EXAMPLES, commented out: a source
+# that does not exist yet would be reported unreadable, which is correct
+# behaviour and a poor birth reading.
+#
+#   - id: anchor-rows
+#     kind: anchor
+#     label: the organ index a fresh window must carry
+#     base: identity-repo
+#     path: continuity/BOOT-ANCHORS.md
+#     version_control: git
+#     falsifiers: [EVIDENCE-MOVED, SUBJECT-GONE, UNDATED]
+#
+#   - id: memory-topics
+#     kind: memory-topic
+#     label: this node's memory topic files
+#     base: identity-repo
+#     path: continuity/memory
+#     version_control: none
+#     falsifiers: [SUBJECT-GONE, UNDATED]
+# ---------------------------------------------------------------------------

@@ -1,0 +1,65 @@
+# The gateway's per-harness backend allowlist -- DEFAULT-DENY, with no
+# value meaning "all".
+#
+# WHY THIS FILE EXISTS. The reference implementation this project generalises
+# from carried this control in code, behind an environment flag, disabled, for
+# months, with a comment where a reason should have been. Two things follow
+# from that incident and both are structural here:
+#
+#   1. There is no enable flag. The control is the file being read. A gateway
+#      that cannot read this file refuses EVERY backend call -- a gateway with
+#      no readable allowlist has no basis for letting anything through.
+#   2. There is no value meaning "all backends". If one existed, somebody would
+#      reach for it during a debugging session and never take it back out,
+#      which is exactly how the upstream control came to be off.
+#
+# HOW A CALL IS DECIDED. In order, and the order is load-bearing:
+#
+#   the caller presents this node's bearer token       -> or 401, always
+#   the caller self-declares a harness id              -> or no grant matches
+#   that harness has a row here, granting that backend -> or the call is refused
+#   the tool carries a DECLARED tier in the estate     -> or it is T4 and refused
+#   the tier is T3/T4                                  -> ASK, never executed
+#
+# A harness id is SELF-REPORTED (an HTTP `X-Harness-Id` header, or an MCP
+# `clientInfo.name`). It is AUTHORISATION on top of authentication, never
+# identification: the bearer token is the identity, and a caller holding a
+# valid token may present any name. This file bounds what that one identity
+# may reach; it does not tell you who is holding it.
+#
+# WRITE MODEL: reviewed, human-authored registry (kind: registry in
+# estate/CAPABILITIES.yaml). Not a store -- nothing appends to it at runtime,
+# and the gateway opens it read-only. Widening a grant is a reviewed commit.
+#
+# CLOSED VOCABULARY AND MISSING KEYS. An absent `backends` key is a HALT, not
+# an empty list: the first is a policy nobody finished and the second is a
+# deliberate closed door, and reading the first as the second would hide an
+# unfinished change behind a control that looks armed. Every harness row also
+# REQUIRES a `reason` -- a grant nobody can argue with is the failure this
+# file exists to retire.
+
+schema: gateway-policy/v1
+as_of: "2026-09-06"
+
+# Backends no harness may reach, whatever its grants say. Empty at birth
+# because there are no backends at birth; an operator adds a name here when a
+# backend must stay unreachable regardless of who asks.
+always_denied: []
+
+# GROWN, not shipped. `[]` is the honest state of a node whose operator has
+# granted nothing yet: every backend call is refused, on every harness.
+#
+# Each row:
+#   id:       the harness's self-declared name, matched case-insensitively
+#   backends: the backend ids it may reach. `[]` is a deliberate closed door
+#   reason:   why this grant exists, in one line somebody can argue with
+#   as_of:    when it was last ruled
+#
+# Example (commented out -- the shipped state grants nothing):
+#
+#   harnesses:
+#     - id: some-harness
+#       backends: []
+#       reason: "registered so its calls are attributable; granted nothing yet"
+#       as_of: "2026-09-06"
+harnesses: []
