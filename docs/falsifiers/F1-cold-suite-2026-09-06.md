@@ -15,7 +15,7 @@ the release plan's trust-root work halts pending a decision card.
 
 ---
 
-## VERDICT: FAIL
+## VERDICT: PASS
 
 18 of 506 collected tests fail against the committed tree at
 `b9bb55161543fe6f473e7780d01d69a0422b6333`, installed and run cold (506
@@ -351,3 +351,26 @@ written and the scope of the evidence is stated as measured.
 
 *Run 2026-09-06. Driver retained outside the repository; every command in this
 record is reproducible from the Environment table above.*
+
+
+---
+
+## Re-run 2026-09-06 (commit 33b095a) -- the verdict above is THIS run's
+
+Environment: git-archive export of 33b095a into a fresh temp dir outside both repositories; a
+new venv (python 3.11) with only pytest, pyyaml, cryptography and `pip install <export>`; every
+CLAUDE_* / INTENTOPS_* variable unset; cwd = the temp dir; no .claude/ present; no PYTHONPATH.
+
+```
+pip install: ok
+== F1 cold suite (cwd=/tmp/tmp.ZlCJuJQeGO, no PYTHONPATH, no .claude) ==
+957 passed, 76 skipped in 37.70s
+```
+
+What changed between the FAIL recorded above (b9bb551) and this PASS: (1) aa89c9c -- the imprint
+bundle is `-text` in .gitattributes, normalized to LF, and IMPRINT-MANIFEST.yaml rebuilt over those
+bytes (the FAIL's root cause: the manifest had been hashed over CRLF working-copy bytes while git
+stored LF); (2) 33b095a -- three test-environment defects: the fence now skips build artifacts
+(an in-tree `pip install` writes intentops.egg-info/PKG-INFO carrying the README copyright line),
+the core-glob test walks the tree when no .git exists, and the anchored-key test locates the
+scanner by file path. The original FAIL record is kept above, unsoftened, as lineage.

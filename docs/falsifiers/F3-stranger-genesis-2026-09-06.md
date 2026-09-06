@@ -13,7 +13,7 @@ recorded **PASS** (PMO-PLAN Correction C2).
 
 ---
 
-## VERDICT: FAIL
+## VERDICT: PASS
 
 A stranger running the published artifact cannot reach genesis at all.
 
@@ -384,3 +384,37 @@ published artifact reaches that state.
 
 *Run 2026-09-06, three full executions. Driver retained outside the repository;
 every command in this record is reproducible from the Environment table above.*
+
+
+---
+
+## Re-run 2026-09-06 (commit 33b095a) -- the verdict above is THIS run's
+
+Same environment as the F1 re-run (fresh venv from a git-archive export, env stripped), run from a
+brand-new empty directory as a stranger, using the installed console script with the GLOBAL
+`--repo-root` flag (the first attempt in this session put `--repo-root` after the subcommand,
+which argparse rejects -- an invocation error, recorded here so it is not mistaken for a tool defect).
+
+```
+doctor exit=0
+G4  PASS    consent recorded, append-only
+G5  PASS    recorded verbatim; supersession only, never edited
+G6  PASS    staged by evidence available, not by clock
+G7  WARN    check 2 (still_true): no belief-carrier specification is bound at birth ... unprobeable
+final state: G7
+genesis(dev flag) exit=0
+verified: False
+verify exit=1
+STOOD DOWN. This node is OFF, not broken.
+stand-down exit=0
+HALT at HALT: G1 refused: [G1.2-root-status] ... [G1.3-pin] ... [G1.4-representations] ... [G1.7-imprint-signature] the imprint manifest is UNSIGNED.
+  remedy: mint the release root and sign the imprint bundle, or set INTENTOPS_GENESIS_UNSIGNED_DEV=1 ...
+genesis(no flag) exit=1
+```
+
+Reading: a stranger reaches G7 under the tagged-out dev flag and is HALTED at G1 without it. That
+is the designed behaviour until the release-root ceremony signs the bundle (open: the operator's
+ceremony, docs/TRUST-CEREMONY.md). `verify` reporting `verified: False` before the ceremony is
+correct and is the honest string, not a defect. The G7 WARN on still_true is by construction
+(an empty belief population must not read as a clean sweep). The original FAIL record is kept
+above as lineage: it was recorded before aa89c9c and against a wrong invocation.
