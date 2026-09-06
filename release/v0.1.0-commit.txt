@@ -1,0 +1,6 @@
+IntentOps v0.1.0 release evidence
+commit 23e20a2c41fa599c0d441100934b6d72c3f528d6
+tag v0.1.0
+author Darrington Bevins
+copyright (c) 2026 Darrington Bevins, Apache-2.0
+repository C:/Workspace/intentops -> github.com/darringtonbevins/intentops
