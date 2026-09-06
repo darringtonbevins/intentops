@@ -374,3 +374,10 @@ stored LF); (2) 33b095a -- three test-environment defects: the fence now skips b
 (an in-tree `pip install` writes intentops.egg-info/PKG-INFO carrying the README copyright line),
 the core-glob test walks the tree when no .git exists, and the anchored-key test locates the
 scanner by file path. The original FAIL record is kept above, unsoftened, as lineage.
+
+
+## Re-run 2026-09-06 (commit 83dfc51, wave 3) -- verdict unchanged: PASS
+
+```
+1326 passed, 78 skipped in 50.37s (fresh venv outside both repos; git on PATH; resolvable home)
+```

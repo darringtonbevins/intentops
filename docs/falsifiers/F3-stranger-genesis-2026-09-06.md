@@ -418,3 +418,10 @@ ceremony, docs/TRUST-CEREMONY.md). `verify` reporting `verified: False` before t
 correct and is the honest string, not a defect. The G7 WARN on still_true is by construction
 (an empty belief population must not read as a clean sweep). The original FAIL record is kept
 above as lineage: it was recorded before aa89c9c and against a wrong invocation.
+
+
+## Re-run 2026-09-06 (commit 83dfc51, wave 3) -- verdict unchanged: PASS
+
+```
+doctor exit=0; genesis --dry-run --identity-repo new (dev flag) -> final state G7, exit 0; verify -> verified: False, exit 1 (pre-ceremony, honest); stand-down exit 0; genesis without the flag -> HALT at G1, exit 1
+```
