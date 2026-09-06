@@ -31,8 +31,13 @@ manufactures confidence over a population it never saw
       is invisible, and a green run says nothing at all about that population.
       The honest form of a green result is the three-clause one, which the
       report prints verbatim rather than leaving to the reader.
-    * It reads the WORKING TREE, never git history. A name deleted today may
-      still sit in an earlier commit, and this gate will not notice.
+    * The default scan reads the WORKING TREE only. ``--history`` scans commit
+      IDENTITIES and MESSAGES as well, which is where the first exposure of a
+      published repository normally lives: an author line is written by the
+      committer's local config, never by anything in the tree, so a tree that
+      scans clean can still publish a private name the moment it is pushed.
+      Neither mode reads historical file CONTENT -- a name deleted from a file
+      today still sits in that file's earlier blobs, and nothing here looks.
     * Binary files are skipped (by extension, and by a null-byte probe). A
       token inside an archive or an image is not seen.
     * Files above ``max_file_bytes`` are reported UNSCANNED and stay in the
@@ -53,6 +58,7 @@ EXIT CODES
 CLI
     python scripts/ops/exposure_gate.py                 # scan the repository
     python scripts/ops/exposure_gate.py --root PATH     # scan somewhere else
+    python scripts/ops/exposure_gate.py --history       # also scan commit identities
     python scripts/ops/exposure_gate.py --selftest      # prove it can fire
 """
 
@@ -62,6 +68,7 @@ import argparse
 import hashlib
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -71,9 +78,12 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 __all__ = [
     "Fence",
     "Finding",
+    "HistoryUnavailable",
     "ScanResult",
     "load_fence",
+    "render_history_report",
     "render_report",
+    "scan_history",
     "scan_text",
     "scan_tree",
     "selftest",
@@ -333,11 +343,51 @@ class ScanResult:
         return not self.findings and not self.bad_markers
 
 
-def _redact(line: str, start: int, end: int, rule_id: str) -> str:
+def _redact_spans(
+    line: str,
+    spans: Sequence[Tuple[int, int, str]],
+    focus: Tuple[int, int],
+) -> str:
+    """Excerpt one hit with EVERY fenced span on the line redacted.
+
+    Redacting only the hit being reported is not enough. A line that carries
+    two fenced things -- a name beside an address, which is the ordinary shape
+    of a commit author line -- would then publish each one inside the other's
+    excerpt, into a CI log, which is a public surface. So every span any rule
+    matched on this line is blanked, including spans that were exempted or
+    allowed: appearing in a FILE and appearing in a LOG are different
+    permissions, and only the first was ever granted.
+    """
     body = line.rstrip("\n")
-    lo = max(0, start - 24)
-    hi = min(len(body), end + 24)
-    return (body[lo:start] + f"[REDACTED:{rule_id}]" + body[end:hi]).strip()
+    merged: List[Tuple[int, int, str]] = []
+    for start, end, rule in sorted(spans, key=lambda s: (s[0], -s[1])):
+        if merged and start < merged[-1][1]:
+            prev_start, prev_end, prev_rule = merged[-1]
+            if end > prev_end:
+                merged[-1] = (prev_start, end, prev_rule)
+            continue
+        merged.append((start, end, rule))
+
+    parts: List[str] = []
+    cursor = 0
+    focus_start: Optional[int] = None
+    focus_end: Optional[int] = None
+    for start, end, rule in merged:
+        parts.append(body[cursor:start])
+        placeholder = f"[REDACTED:{rule}]"
+        if focus_start is None and start <= focus[0] < end:
+            focus_start = sum(len(p) for p in parts)
+            focus_end = focus_start + len(placeholder)
+        parts.append(placeholder)
+        cursor = end
+    parts.append(body[cursor:])
+    rebuilt = "".join(parts)
+
+    if focus_start is None or focus_end is None:
+        focus_start, focus_end = 0, min(len(rebuilt), 24)
+    lo = max(0, focus_start - 24)
+    hi = min(len(rebuilt), focus_end + 24)
+    return rebuilt[lo:hi].strip()
 
 
 def _marker_on(line: str, fence: Fence) -> Optional[Tuple[str, bool]]:
@@ -385,17 +435,22 @@ def scan_text(
                 )
             continue
 
+        # Two passes over the line. The first finds every fenced span,
+        # whether or not it will be reported; the second renders the ones
+        # that are, with ALL of them blanked. One pass cannot do this: the
+        # excerpt for the first hit has to know about a hit found later.
+        spans: List[Tuple[int, int, str]] = []
+        reported: List[Tuple[int, int, str, str]] = []  # start, end, kind, rule
+
         for pat in fence.patterns:
             for m in pat.regex.finditer(line):
+                spans.append((m.start(), m.end(), pat.id))
                 if pat.id == "email-shaped":
                     domain = m.group(0).rsplit("@", 1)[-1].lower().rstrip(".")
                     if any(domain == d or domain.endswith("." + d)
                            for d in fence.allowed_email_domains):
                         continue
-                res.findings.append(
-                    Finding(path, line_no, "pattern", pat.id,
-                            _redact(line, m.start(), m.end(), pat.id))
-                )
+                reported.append((m.start(), m.end(), "pattern", pat.id))
 
         low = line.lower()
         for wm in _WORD.finditer(low):
@@ -407,11 +462,9 @@ def scan_text(
                 # exempt and dropped. Falling through to the substring pass
                 # would re-find the same word under a second rule and report an
                 # exemption the fence had just granted.
+                spans.append((wm.start(), wm.end(), hit_id))
                 if hit_id not in exempt:
-                    res.findings.append(
-                        Finding(path, line_no, "token", hit_id,
-                                _redact(line, wm.start(), wm.end(), hit_id))
-                    )
+                    reported.append((wm.start(), wm.end(), "token", hit_id))
                 continue
             for length, table in substring_digests.items():
                 if len(word) < length:
@@ -420,12 +473,18 @@ def scan_text(
                     piece = word[off:off + length]
                     pd = hashlib.sha256(piece.encode("ascii")).hexdigest()
                     sub_id = table.get(pd)
-                    if sub_id is not None and sub_id not in exempt:
-                        res.findings.append(
-                            Finding(path, line_no, "token", sub_id,
-                                    _redact(line, wm.start() + off,
-                                            wm.start() + off + length, sub_id))
-                        )
+                    if sub_id is None:
+                        continue
+                    start = wm.start() + off
+                    spans.append((start, start + length, sub_id))
+                    if sub_id not in exempt:
+                        reported.append((start, start + length, "token", sub_id))
+
+        for start, end, kind, rule_id in reported:
+            res.findings.append(
+                Finding(path, line_no, kind, rule_id,
+                        _redact_spans(line, spans, (start, end)))
+            )
     return res
 
 
@@ -483,6 +542,134 @@ def scan_tree(root: Path, fence: Fence) -> ScanResult:
             result=res,
         )
     return res
+
+
+# ---------------------------------------------------------------------------
+# history
+#
+# The working tree is not the whole published surface. A commit carries an
+# author and a committer -- a name and an address taken from whoever ran the
+# command, not from anything in the tree -- and those travel with every clone
+# and every forge page. A repository whose files are spotless can still
+# publish a private name on its very first push, and until this existed
+# nothing here could see that.
+# ---------------------------------------------------------------------------
+
+
+class HistoryUnavailable(RuntimeError):
+    """Raised when the history could not be read at all.
+
+    Deliberately not a quiet zero: an unreadable history that graded as clean
+    would be the denominator failure this project keeps finding elsewhere --
+    the population shrinks and the number gets better.
+    """
+
+
+_GIT_FIELD = "\x1f"
+_GIT_RECORD = "\x1e"
+_GIT_FORMAT = _GIT_FIELD.join(
+    ["%H", "%an", "%ae", "%cn", "%ce", "%s", "%b"]) + _GIT_RECORD
+
+#: Substrings git uses when a repository exists but carries no commits yet.
+#: That is an EMPTY population, which is a different thing from an unreadable
+#: one, and the two must not collapse into the same verdict.
+_EMPTY_HISTORY_SIGNS = ("does not have any commits",
+                        "unknown revision",
+                        "bad default revision")
+
+
+def _run_git(root: Path, args: Sequence[str]) -> Tuple[int, str, str]:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    except OSError as exc:  # git absent from PATH
+        raise HistoryUnavailable(f"git could not be run: {exc}") from exc
+    return proc.returncode, proc.stdout or "", proc.stderr or ""
+
+
+def _commit_document(fields: Sequence[str]) -> str:
+    """Render one commit as a small document, one fact per line.
+
+    Line numbers then mean something in a finding: line 1 is the author, line
+    2 the committer, line 3 the subject, and the body follows.
+    """
+    _, an, ae, cn, ce, subject, body = (list(fields) + [""] * 7)[:7]
+    lines = [f"author: {an} <{ae}>",
+             f"committer: {cn} <{ce}>",
+             f"subject: {subject}"]
+    if body.strip():
+        lines.extend(body.splitlines())
+    return "\n".join(lines) + "\n"
+
+
+def scan_history(
+    root: Path,
+    fence: Fence,
+    *,
+    limit: Optional[int] = None,
+    log_text: Optional[str] = None,
+) -> Tuple[ScanResult, int]:
+    """Scan commit identities and messages. Returns ``(result, commits)``.
+
+    ``log_text`` injects a log instead of running git, which is how the
+    selftest proves this can fire without needing a repository to exist.
+
+    History gets NO path exemptions. ``allowed_paths`` names places in the
+    working tree where a reserved name may legitimately appear; an author
+    line is not one of them, and inheriting that exemption here would let the
+    one surface this function exists to watch exempt itself.
+    """
+    if log_text is None:
+        code, out, err = _run_git(root, ["rev-parse", "--git-dir"])
+        if code != 0:
+            raise HistoryUnavailable(
+                f"not a git repository (or git refused): {err.strip() or code}")
+        args = ["log", "--all", f"--format={_GIT_FORMAT}"]
+        if limit is not None:
+            args.append(f"-n{int(limit)}")
+        code, out, err = _run_git(root, args)
+        if code != 0:
+            low = err.lower()
+            if any(sign in low for sign in _EMPTY_HISTORY_SIGNS):
+                return ScanResult(), 0
+            raise HistoryUnavailable(f"git log failed: {err.strip() or code}")
+        log_text = out
+
+    res = ScanResult()
+    commits = 0
+    for record in log_text.split(_GIT_RECORD):
+        record = record.strip("\n")
+        if not record.strip():
+            continue
+        fields = record.split(_GIT_FIELD)
+        sha = (fields[0] or "?").strip()
+        commits += 1
+        res.files_scanned += 1
+        scan_text(_commit_document(fields), fence,
+                  path=f"git:{sha[:12]}", result=res)
+    return res, commits
+
+
+def render_history_report(res: ScanResult, commits: int, root: Path) -> str:
+    lines = [f"exposure gate over the history of {root}",
+             f"  population: {commits} commits read "
+             f"(identities and messages; never historical file content)"]
+    if res.findings or res.bad_markers:
+        lines.append(f"  FINDINGS: {len(res.findings)}")
+        for finding in res.findings + res.bad_markers:
+            lines.append("    " + finding.render())
+        lines.append("  A commit's author and committer come from the machine "
+                     "that made it, so this is corrected by rewriting the "
+                     "identity on those commits -- never by editing a file.")
+    elif commits == 0:
+        lines.append("  VERDICT: EMPTY -- this repository has no commits yet. "
+                     "That is an empty population, not a clean bill; the first "
+                     "commit is the first thing to re-scan.")
+    else:
+        lines.append("  VERDICT: CLEAN")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +786,17 @@ def selftest() -> int:
     check("a finding never echoes the matched text",
           bool(r.findings) and all(planted not in f.excerpt for f in r.findings))
 
+    # 4b: and never echoes a DIFFERENT fenced thing on the same line. This is
+    # the ordinary shape of a commit author line -- a name beside an address --
+    # and redacting only the reported span published each one inside the
+    # other's excerpt.
+    crowded = f"author: {planted} Person <{sample_address}>"
+    r = scan_text(crowded, fence, path="a.md")
+    check("a line with two fenced things leaks neither into the other's excerpt",
+          len(r.findings) >= 2
+          and all(planted not in f.excerpt and sample_address not in f.excerpt
+                  for f in r.findings))
+
     # 5-6: the two ways a hit is legitimately cleared.
     r = scan_text(f"{planted}  # exposure-gate: allow this is the reserved instance",
                   fence, path="a.md")
@@ -648,7 +846,40 @@ def selftest() -> int:
         check("skipped and scanned are counted separately",
               walked.files_scanned == 2 and walked.files_skipped == 1)
 
-    # 15: an unusable fence is fatal, never a quiet clean run.
+    # 15-19: the history surface. A commit's author line is written by the
+    # machine that made it, so it is the one place a spotless tree can still
+    # publish a private name.
+    def _log(*records: Sequence[str]) -> str:
+        return _GIT_RECORD.join(_GIT_FIELD.join(r) for r in records) + _GIT_RECORD
+
+    planted_log = _log(("abc123def456", f"A {planted} Person", "a@example.com",
+                        "A Person", "a@example.com", "a subject", ""))
+    hist, count = scan_history(Path("."), fence, log_text=planted_log)
+    check("a planted name in an author line is found",
+          count == 1 and any(f.path.startswith("git:") for f in hist.findings))
+    check("a history finding never echoes the matched text",
+          bool(hist.findings) and all(planted not in f.excerpt for f in hist.findings))
+
+    addressed = _log(("abc123def456", "A Person", "someone" + "@" + "somewhere.test",
+                      "A Person", "someone" + "@" + "somewhere.test", "s", ""))
+    hist, _ = scan_history(Path("."), fence, log_text=addressed)
+    check("an address outside the reserved domains is found in an identity",
+          any(f.rule_id == "email-shaped" for f in hist.findings))
+
+    clean_log = _log(("abc123def456", "A Person", "nobody@example.com",
+                      "A Person", "nobody@example.com", "ordinary subject", ""))
+    hist, count = scan_history(Path("."), fence, log_text=clean_log)
+    check("an ordinary commit record is clean", hist.clean and count == 1)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            scan_history(Path(tmp), fence)
+            fired = False
+        except HistoryUnavailable:
+            fired = True
+        check("an unreadable history refuses rather than reporting clean", fired)
+
+    # 20: an unusable fence is fatal, never a quiet clean run.
     with tempfile.TemporaryDirectory() as tmp:
         bad = Path(tmp) / "fence.yaml"
         bad.write_text("schema: exposure-fence/v1\nas_of: 'x'\n", encoding="utf-8")
@@ -683,6 +914,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="tree to scan (default: the repository this script lives in)")
     parser.add_argument("--fence", type=Path, default=None,
                         help="fence config (default: <root>/config/exposure-fence.yaml)")
+    parser.add_argument("--history", action="store_true",
+                        help="also scan commit identities and messages")
     parser.add_argument("--selftest", action="store_true",
                         help="prove the gate can fire, then exit")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -700,7 +933,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     res = scan_tree(root, fence)
     print(render_report(res, fence, root))
-    return 0 if res.clean else 1
+    ok = res.clean
+
+    if args.history:
+        print()
+        try:
+            hist, commits = scan_history(root, fence)
+        except HistoryUnavailable as exc:
+            # Fail closed and loud. An unreadable history is not an empty one.
+            print(f"exposure gate: HISTORY UNSCANNED -- {exc}", file=sys.stderr)
+            ok = False
+        else:
+            print(render_history_report(hist, commits, root))
+            ok = ok and hist.clean
+
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
