@@ -65,7 +65,7 @@
 #     is subject to the same rule stated above: say how many identities and
 #     how many checks it removes before doing so.
 #   * Added 2026-09-06: `allowed_path_tokens` now exempts 2 token ids
-#     (operator-given, operator-family) in each of 4 files (LICENSE, README.md, NOTICE,
+#     (operator-given, operator-family) in each of 5 files (LICENSE, README.md, release/v0.1.0-commit.txt, NOTICE,
 #     PROVENANCE.md) -- 4 token-checks removed from the population, for the
 #     stated reason that both files carry the repository owner's name as the
 #     copyright holder. Every other path in this file still carries an empty
@@ -243,6 +243,7 @@ allowed_paths:
   - PROVENANCE.md
   - LICENSE
   - README.md
+  - release/v0.1.0-commit.txt
 
 # WHICH tokens each allowed path may carry.
 #
@@ -280,6 +281,7 @@ allowed_path_tokens:
   PROVENANCE.md: [operator-given, operator-family]
   LICENSE: [operator-given, operator-family]
   README.md: [operator-given, operator-family]
+  release/v0.1.0-commit.txt: [operator-given, operator-family]
 
 # History-scope identity allowlist. Everything above governs the WORKING
 # TREE; this block governs `--history` alone (scan_history never inherits it

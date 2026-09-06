@@ -515,8 +515,13 @@ def g1_provenance(ctx: GenesisContext) -> PhaseResult:
 # G2 keys
 # ---------------------------------------------------------------------------
 
-def _mint_keypair() -> Tuple[str, str, bytes]:
-    """(public_pem, did:key, private_der). HALTS if the maths is unavailable.
+def _mint_keypair() -> Tuple[str, str, Any]:
+    """(public_pem, did:key, private key OBJECT). HALTS if maths is unavailable.
+
+    The third element is the live key, not serialised bytes: serialisation now
+    depends on the operator's storage answer (:func:`_private_bytes`), and a
+    function that returned unencrypted DER before anyone had chosen a medium
+    made "unencrypted" the only reachable outcome.
 
     Never returns a placeholder identity. An upstream implementation returned
     the same UUID string for both halves of a keypair when the crypto library
@@ -545,12 +550,67 @@ def _mint_keypair() -> Tuple[str, str, bytes]:
     raw = public.public_bytes(encoding=serialization.Encoding.Raw,
                               format=serialization.PublicFormat.Raw)
     did = "did:key:z" + provenance_mod.b58encode(b"\xed\x01" + raw)
-    der = private.private_bytes(
+    return pem, did, private
+
+
+def _private_bytes(private: Any, passphrase: Optional[str]) -> bytes:
+    """PKCS8 DER for the minted key, wrapped iff a passphrase was supplied.
+
+    Split out from :func:`_mint_keypair` on 2026-09-06. Before that, the DER
+    was serialised with ``NoEncryption()`` unconditionally while the G2 gate
+    offered ``passphrase-wrapped file`` as one of four storage answers and the
+    chosen answer was recorded into ``operator-root.pub.json`` -- so the
+    artifact stated a protection the node had not applied. A recorded claim the
+    implementation does not honour is worse than an unencrypted key, because it
+    stops the operator looking.
+    """
+    from cryptography.hazmat.primitives import serialization
+
+    if passphrase:
+        algorithm: Any = serialization.BestAvailableEncryption(
+            passphrase.encode("utf-8"))
+    else:
+        algorithm = serialization.NoEncryption()
+    return private.private_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
+        encryption_algorithm=algorithm,
     )
-    return pem, did, der
+
+
+#: The storage answers G2 accepts, and what this build actually does with each.
+#: An undeclared answer HALTs -- it is never silently treated as "a file".
+_STORAGE_IMPLEMENTED = "passphrase-wrapped file"
+_STORAGE_NOT_IMPLEMENTED = ("hardware token", "tpm", "os credential store")
+
+
+def _resolve_storage(answer: str) -> str:
+    """Normalise the G2 storage answer, or HALT saying why it cannot be met.
+
+    Three of the four media the gate offers need a key custodian this build
+    does not have. Offering them and then writing an unencrypted file is the
+    defect; refusing them by name is the fix, and it leaves the operator with
+    an accurate picture of what their node did.
+    """
+    lowered = answer.strip().lower()
+    if lowered.startswith("dry-run"):
+        return "dry-run"
+    if _STORAGE_IMPLEMENTED in lowered or lowered in ("file", "passphrase"):
+        return _STORAGE_IMPLEMENTED
+    for medium in _STORAGE_NOT_IMPLEMENTED:
+        if medium in lowered:
+            raise Halt(
+                f"storage medium {answer!r} is not implemented in this build, "
+                f"and this node will not record a protection it did not apply",
+                remedy="re-run G2 and answer 'passphrase-wrapped file', or "
+                       "mint the key in your own custodian and import it once "
+                       "hardware-backed storage ships",
+            )
+    raise Halt(
+        f"storage answer {answer!r} is not one of the offered media",
+        remedy=f"answer one of: {_STORAGE_IMPLEMENTED}, or one of "
+               f"{', '.join(_STORAGE_NOT_IMPLEMENTED)} (not yet implemented)",
+    )
 
 
 def _fingerprint(pem: str) -> str:
@@ -580,17 +640,58 @@ def _refuse_repo_path(path: Path, ctx: GenesisContext) -> None:
         )
 
 
+def _read_passphrase(ctx: GenesisContext) -> str:
+    """Read the key passphrase without echoing it, or HALT.
+
+    Never returns the value to any caller that logs it: the only consumer is
+    :func:`_private_bytes`, and the passphrase appears in no PhaseResult, no
+    journal entry, and no artifact. An unattended run cannot reach here (G2's
+    storage gate halts first), but this checks again rather than trusting an
+    upstream check -- a secret prompt reached by a scheduled task would read
+    EOF and, if that were treated as "no passphrase", would silently write an
+    unencrypted key under a record claiming otherwise.
+    """
+    import getpass
+
+    if not _attended(ctx):
+        raise OperatorGateRequired(
+            "G2 needs a passphrase for the operator root's private key, and "
+            "stdin is not an attended terminal",
+            remedy=_GATE_REMEDY,
+        )
+    try:
+        first = getpass.getpass("[G2] passphrase for the operator root key: ")
+        again = getpass.getpass("[G2] again: ")
+    except (EOFError, KeyboardInterrupt) as exc:
+        raise OperatorGateRequired(
+            "G2 needs a passphrase and stdin ended before one arrived",
+            remedy=_GATE_REMEDY,
+        ) from exc
+    if first != again:
+        raise Halt("the two passphrases do not match",
+                   remedy="re-run `intentops genesis --resume`")
+    if not first:
+        raise Halt(
+            "an empty passphrase is not a passphrase, and this node will not "
+            "record 'passphrase-wrapped file' over an unencrypted key",
+            remedy="re-run and supply a passphrase, or implement a custodian",
+        )
+    return first
+
+
 def g2_keys(ctx: GenesisContext) -> PhaseResult:
     """Mint the node keypair and bind the operator root. Operator gate."""
-    pem, did, private_der = _mint_keypair()
+    pem, did, private = _mint_keypair()
     ctx.node_id = did
     ctx.designation = "node-" + did[len("did:key:z"):][:8]
 
     storage = _gate(ctx, "G2",
                     "Where should the operator root's private key live? "
-                    "(hardware token / TPM / OS credential store / "
-                    "passphrase-wrapped file)",
+                    "(passphrase-wrapped file -- hardware token / TPM / OS "
+                    "credential store are named but NOT implemented in this "
+                    "build and will halt)",
                     "none (dry-run: no private key is persisted)")
+    medium = _resolve_storage(storage)
     label = _gate(ctx, "G2", "What should this node call you in its records? "
                              "(a label, not a name it will speak to others)",
                   "operator")
@@ -620,7 +721,12 @@ def g2_keys(ctx: GenesisContext) -> PhaseResult:
         "role": "operator_root",
         "status": "dry-run" if ctx.dry_run else "active",
         "fingerprint": ctx.operator_fingerprint,
+        # `storage` is the operator's ANSWER; `storage_applied` is what this
+        # build did. They were one field until 2026-09-06, and the one field
+        # carried the answer -- so a node that wrote an unencrypted key could
+        # record "hardware token" and nobody downstream could tell.
         "storage": storage,
+        "storage_applied": medium,
         "lifetime_years": 3,
         "signs": ["node_identity_cert", "founding_conversation",
                   "alignment_record", "core_mechanic_change"],
@@ -633,10 +739,12 @@ def g2_keys(ctx: GenesisContext) -> PhaseResult:
     notes = [f"designation {ctx.designation} derived from the node's did:key"]
     if ctx.dry_run:
         # The private bytes exist only in this process and are never persisted.
-        del private_der
+        del private
         notes.append("DRY-RUN: a keypair was minted in memory and NOT persisted; "
                      "this node cannot sign anything")
     else:
+        passphrase = _read_passphrase(ctx)
+        private_der = _private_bytes(private, passphrase)
         target = Path(os.path.expanduser("~")) / ".intentops" / "keys" \
             / f"{ctx.designation}.key"
         _refuse_repo_path(target, ctx)
@@ -647,9 +755,12 @@ def g2_keys(ctx: GenesisContext) -> PhaseResult:
         except OSError:  # pragma: no cover - platform-dependent
             notes.append("could not restrict permissions on the key file")
         notes.append(f"private key written outside every repository: {target}")
+        notes.append("the key file is passphrase-wrapped (PKCS8, "
+                     "BestAvailableEncryption)")
     return PhaseResult("G2", "PASS",
                        {"designation": ctx.designation, "did": did,
-                        "storage": storage, "dry_run": ctx.dry_run}, notes)
+                        "storage": storage, "storage_applied": medium,
+                        "dry_run": ctx.dry_run}, notes)
 
 
 # ---------------------------------------------------------------------------
@@ -792,54 +903,106 @@ def g5_founding(ctx: GenesisContext) -> PhaseResult:
                        ["recorded verbatim; supersession only, never edited"])
 
 
+#: Names for the stage ids, for the human-readable projection only. The gate
+#: itself lives in ``alignment.interview.STAGE_THRESHOLDS`` -- one definition,
+#: not two, so the two cannot drift apart.
+_G6_STAGE_NAMES = {"S0": "Consent", "S1": "Boundary", "S2": "Domain",
+                   "S3": "Replay", "S4": "Commitment"}
+
+
 def g6_alignment(ctx: GenesisContext) -> PhaseResult:
-    """Stage the interview by EVIDENCE AVAILABLE, never by clock."""
+    """Stage the interview by EVIDENCE AVAILABLE, never by clock.
+
+    The stage plan and the honest status string are the alignment package's,
+    called here rather than restated: a second copy of the thresholds would
+    drift from the first and nothing would notice.
+    """
     import yaml
 
+    from ..alignment import calibration as calibration_mod
+    from ..alignment import interview as interview_mod
+
     template = ctx.repo_root / "config" / "alignment-interview.template.yaml"
+    notes = ["staged by evidence available, not by clock"]
+
+    # At genesis this node's own queue has no history, so no replay exists to
+    # ask. That is the cold-start fact, not a degraded reading.
+    rulings = 0
+    plan = interview_mod.stage_plan(rulings)
     stages = [
-        {"id": "S0", "name": "Consent", "available": True,
-         "grade": "recorded fact"},
-        {"id": "S1", "name": "Boundary", "available": True,
-         "grade": "recorded fact"},
-        {"id": "S2", "name": "Domain", "available": True,
-         "grade": "INFERRED, never OBSERVED -- a prior that has never moved "
-                  "under a real ruling is the node's own prompt reflected back"},
-        {"id": "S3", "name": "Replay", "available": False,
-         "requires": "at least 10 real rulings in this node's own queue history",
-         "grade": "OBSERVED"},
-        {"id": "S4", "name": "Commitment", "available": False,
-         "requires": "at least 20 real rulings",
-         "grade": "OBSERVED"},
+        {"id": stage.id, "name": _G6_STAGE_NAMES.get(stage.id, stage.id),
+         "available": stage.available, "requires": stage.requires,
+         "grade": stage.grade}
+        for stage in plan
     ]
+
+    # A template that EXISTS but does not LOAD is worse than an absent one: it
+    # looks accounted for. Load it, and surface the refusal rather than
+    # reporting presence as though it were validity.
+    template_loads = False
+    questions = 0
+    if template.exists():
+        try:
+            interview = interview_mod.load_interview(template)
+            template_loads = True
+            questions = len(interview.questions())
+        except interview_mod.InterviewError as exc:
+            notes.append(f"the interview template is present but REFUSED by "
+                         f"its own loader: {exc}")
+    else:
+        notes.append(f"the interview template is absent: {template.as_posix()}")
+
+    status = "uncalibrated: 0 of 20 rulings, 0%"
+    try:
+        floors = calibration_mod.default_floors()
+        floor = calibration_mod.load_council_floor(ctx.repo_root,
+                                                   floors.council_level)
+        state = calibration_mod.CalibrationState(graded=0, hits=0,
+                                                 accuracy=0.0, sealed=0)
+        # No council reading is taken at birth, and an absent reading is never
+        # a pass -- so this reports both bars unmet, which is the truth.
+        status = calibration_mod.two_bar_gate(
+            state, floors, council=None, council_floor=floor).status
+        bar = {"rulings": floors.minimum_rulings,
+               "accuracy": floors.minimum_accuracy, "forward_only": True,
+               "council_floor_level": floor.level,
+               "council_floor_sigma": floor.sigma}
+    except calibration_mod.CalibrationError as exc:
+        notes.append(f"the council confidence floor could not be read: {exc}")
+        bar = {"rulings": 20, "accuracy": 0.80, "forward_only": True,
+               "council_floor_level": None, "council_floor_sigma": None}
+
     doc = {
         "schema": "interview-state/v1",
         "as_of": _now(),
         "dry_run": ctx.dry_run,
         "template": template.as_posix() if template.exists() else None,
         "template_present": template.exists(),
+        "template_loads": template_loads,
+        "questions": questions,
         "stages": stages,
-        "calibration_bar": {"rulings": 20, "accuracy": 0.80,
-                            "forward_only": True},
+        "calibration_bar": bar,
+        "status": status,
         "note": "At genesis there are no replays: a fresh operator has ruled "
                 "nothing, so the highest-value elicitation instrument is "
                 "unavailable on day one BY CONSTRUCTION. Below the bar the "
-                "twin is telemetry, never authority, and the honest string is "
-                "'uncalibrated: 0 of 20 rulings'.",
+                "twin is telemetry, never authority. The delegation bar is "
+                "BOTH gates -- the council's TAPCH+ confidence floor AND the "
+                "twin's forward-only calibration bar -- and neither alone "
+                "lifts anything.",
     }
     path = Path(ctx.identity_repo or ctx.node_root) / "twin" / "interview-state.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     with StoreLock(lock_for(path)):
         atomic_replace(path, yaml.safe_dump(doc, default_flow_style=False,
                                             sort_keys=False, allow_unicode=True))
-    verdict = "PASS" if template.exists() else "WARN"
-    notes = ["staged by evidence available, not by clock"]
-    if not template.exists():
-        notes.append(f"the interview template is absent: {template.as_posix()}")
+    verdict = "PASS" if template_loads else "WARN"
     return PhaseResult("G6", verdict,
                        {"stages_available": sum(1 for s in stages
                                                 if s["available"]),
-                        "stages": len(stages)}, notes)
+                        "stages": len(stages),
+                        "questions": questions,
+                        "status": status}, notes)
 
 
 # ---------------------------------------------------------------------------

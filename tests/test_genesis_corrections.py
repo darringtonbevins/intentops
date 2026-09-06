@@ -441,6 +441,7 @@ def test_the_fence_allows_only_paths_that_exist():
         # licence ruling 2026-09-06: copyright-holder line in the Apache appendix + README status
         "LICENSE": ["operator-given", "operator-family"],
         "README.md": ["operator-given", "operator-family"],
+        "release/v0.1.0-commit.txt": ["operator-given", "operator-family"],
     }
     fence = yaml.safe_load(
         (REPO / "config" / "exposure-fence.yaml").read_text(encoding="utf-8"))

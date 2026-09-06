@@ -73,4 +73,23 @@ jobs:
           python -m intentops_saddle_claudecode.pre_tool --selftest
           python -m intentops_saddle_claudecode.observe --selftest
           python -m intentops_saddle_claudecode.session_start --selftest
+          python -m intentops_core.genesis.integrity --selftest
+          python -m intentops_core.governance.values_council --selftest
+          python scripts/hooks/pre-commit-core-surface.py --selftest
           python scripts/ops/exposure_gate.py --selftest
+          python -m intentops_core.substrate.schema --selftest
+          python -m intentops_core.substrate.service_graph --selftest
+          python -m intentops_core.alignment.calibration
+
+      - name: Check the generated store schema has not drifted
+        # deploy/schema/genesis.sql is a GENERATED projection of schema.py. A
+        # hand edit there is a store whose declared write model and whose
+        # actual DDL disagree -- caught here rather than in a database.
+        run: python -m intentops_core.cli substrate init --check
+
+      - name: Re-hash the imprint against its manifest
+        # The bundle's bytes are checked on every push, not only at a node's
+        # birth. A drift here means the published imprint is not the imprint
+        # the manifest claims -- which is exactly the class this instrument
+        # exists to catch, and CI is the earliest place to catch it.
+        run: python -m intentops_core.genesis.integrity --no-record

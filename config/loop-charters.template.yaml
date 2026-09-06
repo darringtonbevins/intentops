@@ -1,0 +1,106 @@
+# Loop charters -- ONE file, N host bindings.
+#
+# PURPOSE
+#   A loop is a cadence that acts without anyone watching. This file is the
+#   single declaration of every such cadence a node runs: what it is for, how
+#   often, how much authority it may hold, what share of the budget it may
+#   spend, how to switch it off, and what evidence it must produce before its
+#   output counts. The host-specific scheduling artifact -- a cron line, a
+#   systemd timer, a Windows scheduled task -- is RENDERED from this file by an
+#   adapter and is never authored by hand. Two hand-authored schedules on two
+#   hosts drift, and nothing notices; one charter and N renderers cannot.
+#
+#   `intentops loops check` compares this file against the bindings actually
+#   present on the host. A charter with NO binding reads ABSENT, not disabled:
+#   it carries no tagout, states no way back, and looks identical to a loop
+#   somebody meant to run and never wired. That distinction is the whole reason
+#   the conformance check exists.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. Single writer -- the operator, by hand or
+#   through one explicit generator, one process at a time. No runtime writer,
+#   so no lock is claimed: nothing in the framework appends a charter. The
+#   loop's own tick journal is a DIFFERENT store with a different model
+#   (append-only JSONL under StoreLock, `.intentops/loops/ticks.jsonl`).
+#
+# THIS FILE SHIPS EMPTY -- `entries: []` -- and that is the honest state. A new
+# node runs no loops. The example below is COMMENTED OUT and its names are
+# fictional.
+#
+# EVERY CHARTER IS BORN DISABLED. `enabled: false` is required on every entry
+# and the loader refuses a file loaded at birth that carries `enabled: true`.
+# Switching a loop on is a reviewed, dated act by the operator, never a side
+# effect of adding a charter.
+#
+# REQUIRED PER ENTRY -- there are NO defaults. A missing load-bearing field is
+# a HALT, never a substituted sensible value: a reader that fills in a blank
+# has taken that field out of the population, and the one field nobody read is
+# the one nobody checks.
+#
+#   id                 kebab-case, unique, and the name every binding carries
+#   purpose            one sentence a stranger can act on; not a category
+#   cadence            see the closed vocabulary below
+#   tier_ceiling       T0 | T1 | T2 -- see the ceiling rule below
+#   enabled            false at birth, always present
+#   budget_share       0 < x <= 1, the fraction of the node's loop budget this
+#                      charter may spend; the enabled entries may not sum > 1
+#   kill_switch        RELATIVE path to a sentinel file; if the file exists the
+#                      tick refuses. Absolute paths are refused -- they are
+#                      machine-specific and do not survive the move this file
+#                      exists to make possible
+#   requires_evidence  non-empty list. What this loop must be able to show
+#                      before its output is a finding. A loop with no evidence
+#                      requirement produces claims, not work
+#
+# OPTIONAL PER ENTRY
+#
+#   notes              free text
+#   tagout             a LOTO id. Present ONLY when this charter is
+#                      deliberately switched off with a stated way back
+#
+# CLOSED VOCABULARY -- an undeclared value is a hard exit
+#
+#   cadence.kind: interval | daily | weekly | manual
+#
+#     interval  requires `every`, one of <N>m | <N>h | <N>d, N >= 1
+#     daily     requires `at`, "HH:MM" 24-hour local time
+#     weekly    requires `at` and `weekday` (mon..sun)
+#     manual    no schedule. A manual charter with no binding is NOT drift --
+#               it is the one cadence for which absence is the correct state
+#
+#   Not every cadence renders on every host, and an adapter that cannot express
+#   a cadence exactly REFUSES rather than rounding. Classic cron cannot say
+#   "every 7 minutes" without firing wrong at the top of each hour; the cron
+#   adapter therefore refuses that charter by name instead of emitting a line
+#   that drifts an hour a day. systemd and the Windows scheduler express it.
+#
+# THE CEILING RULE, STATED SO IT CAN BE ARGUED WITH
+#   `tier_ceiling` is capped at T2. T3 and T4 reach outside the machine and are
+#   human-gated by construction; a tick that fires while nobody is present
+#   cannot hold a human gate open, so a charter claiming a T3 ceiling is
+#   claiming an authority its own scheduler cannot supervise. A loop that needs
+#   a T3 action files it for approval and stops -- that is a T2 charter whose
+#   output is a proposal. Raising this cap is an edit to `TIER_CEILINGS` in
+#   `intentops_core/loops/charters.py` and a decision, not a configuration
+#   value.
+#
+# EXAMPLE ENTRY (commented out; the names are fictional)
+#
+# - id: "loop-doc-drift"
+#   purpose: "Compare the shipped docs against the code they describe and file
+#             each mismatch as one finding."
+#   cadence:
+#     kind: interval
+#     every: "30m"
+#   tier_ceiling: "T1"
+#   enabled: false
+#   budget_share: 0.10
+#   kill_switch: ".intentops/loops/doc-drift.disabled"
+#   requires_evidence:
+#     - "the file and line of each claimed mismatch"
+#     - "the command whose output shows the current behaviour"
+#   notes: "Files findings; never edits a doc on its own."
+
+schema: loop-charters/v1
+as_of: "2026-09-06"
+entries: []

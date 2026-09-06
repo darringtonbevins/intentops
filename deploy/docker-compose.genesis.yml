@@ -1,0 +1,149 @@
+# The genesis service graph -- the whole floor, and nothing above it.
+#
+# WHAT THIS IS. `intentops genesis` phase G3 says a node instantiates every
+# store empty and valid. Two of those stores are not files: the vector store
+# and the journals live in a database, and a state machine cannot create a
+# table in a server that is not running. This file is what must be running.
+#
+# WHAT IS NOT HERE, DELIBERATELY. No graph store: a genesis node has no graph
+# organ, and the one the private estate runs is under a source-available
+# licence that a public clone must not inherit. No cache under a
+# source-available licence either -- Valkey (BSD-3) rather than the fork of it
+# that changed terms. No estate services of any kind: a capability app or
+# another project's API is somebody's deployment, never the framework's floor.
+#
+# LICENCES, one line per image, because a reader deciding whether to run this
+# should not have to go and find out:
+#   pgvector/pgvector  -- PostgreSQL Licence (server) + PostgreSQL Licence
+#                         (pgvector extension). Permissive, OSI-approved.
+#   valkey/valkey      -- BSD 3-Clause. Permissive, OSI-approved.
+#   ollama/ollama      -- MIT. Permissive, OSI-approved. OPTIONAL, and behind
+#                         a profile: a node with a remote provider configured
+#                         never starts it.
+# The MODELS an inference server downloads carry their own licences and are
+# not covered by the line above. That is the operator's decision to make, and
+# this file does not make it for them by pre-pulling anything.
+#
+# PORTS. Every published port is registered in config/ports.yaml and bound to
+# loopback. Nothing here listens on a routable address by default; changing
+# that is an operator's explicit act, in one place.
+#
+# IMAGE TAGS. Every tag is a variable with a default, never `latest`: an
+# implicit tag is a build that cannot be reproduced, and a graph that changes
+# under you is not a floor. The defaults below are SERIES tags, DECLARED from
+# convention and NOT resolved against a registry from here -- this seed has no
+# network in its tests and does not pretend to. A series rather than a point
+# release on purpose: a point release recalled rather than looked up is a
+# number wearing a measurement costume. If a default is wrong the failure is a
+# loud `docker pull` refusal, never a silently different image.
+#
+# CREDENTIALS. INTENTOPS_POSTGRES_PASSWORD has no default and compose refuses
+# to start without it. A load-bearing field with a convenient default is how a
+# development password reaches production; there is no value for it anywhere
+# in this repository, and there never will be.
+#
+# USAGE
+#   docker compose -f deploy/docker-compose.genesis.yml up -d
+#   docker compose -f deploy/docker-compose.genesis.yml --profile local-inference up -d
+#
+# The schema in deploy/schema/ is mounted into the database's own
+# initialisation directory, so a first `up` leaves every store present, empty
+# and valid. It is idempotent, so a later re-run changes nothing.
+
+name: intentops-genesis
+
+services:
+
+  postgres:
+    # Relational and vector in one server: the vector store IS a table here,
+    # not a separate service, which is why there is no third database.
+    image: ${INTENTOPS_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${INTENTOPS_POSTGRES_USER:-intentops}
+      POSTGRES_DB: ${INTENTOPS_POSTGRES_DB:-intentops}
+      POSTGRES_PASSWORD: ${INTENTOPS_POSTGRES_PASSWORD:?set INTENTOPS_POSTGRES_PASSWORD; this file ships no default and no value}
+      # Collation is left at the image's own default. Pinning it would make an
+      # ORDER BY host-independent, which is worth having -- but the setting
+      # that does it has not been exercised against this image here, and a
+      # config line nobody ran is a claim, not a control. Owed work, named.
+    ports:
+      # host 8002 -> vector_store in config/ports.yaml
+      - "127.0.0.1:${INTENTOPS_VECTOR_PORT:-8002}:5432"
+    volumes:
+      - intentops-postgres-data:/var/lib/postgresql/data
+      # Applied once, on an empty data directory, by the image's own
+      # entrypoint. Read-only: the node reads this schema, it never edits it.
+      - ./schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${INTENTOPS_POSTGRES_USER:-intentops} -d ${INTENTOPS_POSTGRES_DB:-intentops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - intentops-genesis
+
+  valkey:
+    # Ephemeral coordination: work queues and short-lived cache. Nothing whose
+    # loss would lose an account of the node's conduct or its beliefs -- that
+    # is the rule that decides which tier a store belongs to, and it is why
+    # this service is allowed to be volatile at all.
+    image: ${INTENTOPS_CACHE_IMAGE:-valkey/valkey:8-alpine}
+    restart: unless-stopped
+    command:
+      - valkey-server
+      - --save
+      - "60"
+      - "1"
+      - --appendonly
+      - "no"
+    ports:
+      # host 8006 -> cache in config/ports.yaml
+      - "127.0.0.1:${INTENTOPS_CACHE_PORT:-8006}:6379"
+    volumes:
+      - intentops-valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    networks:
+      - intentops-genesis
+
+  ollama:
+    # OPTIONAL, and behind a profile on purpose. Rung 4 of the ladder (local
+    # inference) only matters to a node with no remote provider configured;
+    # starting a model server nobody asked for is not a floor, it is a habit.
+    profiles: ["local-inference"]
+    image: ${INTENTOPS_LOCAL_INFERENCE_IMAGE:-ollama/ollama:0.12}
+    restart: unless-stopped
+    ports:
+      # host 8003 -> local_inference in config/ports.yaml
+      - "127.0.0.1:${INTENTOPS_LOCAL_INFERENCE_PORT:-8003}:11434"
+    volumes:
+      - intentops-ollama-models:/root/.ollama
+    healthcheck:
+      # `ollama list` answers only when the server is actually serving; a TCP
+      # probe would go green on a process that cannot answer a request.
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 40s
+    networks:
+      - intentops-genesis
+
+volumes:
+  intentops-postgres-data:
+    name: intentops-postgres-data
+  intentops-valkey-data:
+    name: intentops-valkey-data
+  intentops-ollama-models:
+    name: intentops-ollama-models
+
+networks:
+  intentops-genesis:
+    name: intentops-genesis
+    driver: bridge

@@ -1,0 +1,330 @@
+# Routing policy -- which POOL serves which SHAPE of work, and what may cross.
+#
+# PURPOSE
+#   A node that can only speak to one provider is a node whose governance stops
+#   at that provider's edge. This file is the provider-neutral half of the
+#   answer: task shapes map to TIERS, tiers name provider-agnostic model
+#   FAMILIES, pools declare which families they can serve and which provider
+#   CLASS they belong to, and a fence says -- per estate ring -- which classes
+#   a payload may reach at all.
+#
+#   Nothing here names a vendor, a product, a model id, an account, a host or a
+#   credential. That is the point: the same policy is readable on a node that
+#   runs entirely on its own machine and on one that draws from four providers.
+#
+# WHAT THIS FILE IS NOT
+#   * NOT a router with a client. `intentops_core.routing.policy` reads this
+#     file and returns an Assignment. It opens no socket, imports no provider
+#     SDK, and knows no model id. Selection of a concrete model happens after
+#     this layer, in whatever the node's harness already does.
+#   * NOT a cost gate. The tier, the effort and the cache TTL are POSTURE, and
+#     the fence is the only clause here that can refuse anything. Measure in
+#     whatever unit you like; decide on windows, never on a dollar figure.
+#   * NOT a source of truth for limits. `max_concurrent` and
+#     `telemetry_source` are DECLARED by whoever adds a pool, and the loader
+#     believes them. A declared cap nobody measured is still better than an
+#     undeclared one, because the number is visible and can be argued with.
+#   * NOT populated. `pools.entries` ships EMPTY. A node that has drawn on
+#     nothing yet says so, rather than omitting the question. The `example`
+#     block at the bottom is fictional and is loaded only when a caller asks
+#     for it by name.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. Exactly one writer (a reviewed commit) and
+#   no runtime writer, so no lock is required -- the same model as `ports.yaml`
+#   and `saddles.yaml` beside it. Widening a fence rule is a ruling, and the
+#   commit that widens it is where the reason for the widening lives.
+#
+# BLIND SPOTS -- stated so nobody reads a resolved assignment as a guarantee
+#   * The fence classifies by the pool's DECLARED provider class. Nothing here
+#     verifies that a pool declared `local` is in fact local. A mis-declared
+#     pool defeats the fence silently, and no test in this repository can catch
+#     that -- it is a review property, not a mechanical one.
+#   * The estate ring is an INPUT. This file does not decide which ring a piece
+#     of work belongs to; `intentops_core.estate_classifier` answers that from
+#     the node's own estate map, and its own blind spots apply.
+#   * A permitted assignment says the fence did not refuse. It says nothing
+#     about whether the pool is reachable, funded, or awake.
+#   * `max_concurrent` is declared and not enforced here. This module holds no
+#     store and counts nothing in flight; a scheduler that wants to honour the
+#     cap has to keep that ledger itself.
+#
+# HALT BEHAVIOUR (the one rule that spans this directory)
+#   An undeclared value is a hard exit, never a default of "probably fine".
+#   Every vocabulary below is closed. A pool missing a load-bearing field, a
+#   tier naming an undeclared family, a fence rule naming an undeclared ring, a
+#   declared ring with no fence rule at all -- each of those HALTs the loader.
+#   A missing load-bearing field is never defaulted, because a policy that
+#   half-understands its own rows produces routing that runs and is wrong.
+
+schema: routing-policy/v1
+as_of: "2026-09-06"
+posture: observe          # advisory: the fence refuses, nothing else gates
+
+# ---------------------------------------------------------------------------
+# Declared vocabularies.
+# ---------------------------------------------------------------------------
+
+# WHERE a pool lives, relative to this node. This is the axis the fence cuts
+# on, and it is deliberately about TRUST BOUNDARY rather than about vendor:
+# "which of these did my payload leave the machine to reach, and did it leave
+# the family my harness already runs inside".
+provider_classes:
+  local:
+    meaning: "Inference on this machine. The payload never leaves the host."
+    crosses_machine: false
+  in_family:
+    meaning: >-
+      A remote pool belonging to the same provider family the node's own
+      harness already runs on. The payload leaves the machine, but reaches no
+      party the operator has not already chosen.
+    crosses_machine: true
+  cross_provider:
+    meaning: >-
+      A remote pool belonging to a DIFFERENT provider from the node's own
+      harness. The payload reaches a second party.
+    crosses_machine: true
+
+# WHAT class of model can serve a piece of work, named by capability rather
+# than by product, so the policy survives a vendor's next release.
+model_families:
+  frontier_general:
+    meaning: "The strongest general-purpose model available to this node."
+  frontier_long_horizon:
+    meaning: >-
+      A frontier model chosen for long-horizon or very-large-context work
+      rather than for general strength.
+  mid_workforce:
+    meaning: "A capable mid-cost model for implementation and evidence work."
+  small_tooling:
+    meaning: "A small, fast model for classification, extraction, formatting."
+  local_small:
+    meaning: "A small model running on this machine's own silicon."
+
+# The declared effort vocabulary. Effort is posture, not authorization.
+efforts:
+  low: "Mechanical work where the answer is looked up, not reasoned to."
+  medium: "Ordinary implementation."
+  high: "The default for governed and agentic work."
+  xhigh: "Review, synthesis, and decisions where a missed defect costs more than the pass."
+  max: "One genuinely hard decision. Reserved -- it is not a quality knob to leave on."
+
+# The declared cache-TTL vocabulary. A prefix cache is a prefix match: the
+# right TTL is a function of the GAP between turns on one lane, never of how
+# important the work is.
+cache_ttls:
+  short:
+    seconds: 300
+    meaning: "Fan-out legs, ticks, and anything whose lane goes quiet between turns."
+  long:
+    seconds: 3600
+    meaning: "A main interactive lane, where the gap between turns is usually seconds."
+
+# How a pool is METERED. `none` is a first-class declared value, not an
+# omission: a pool nothing measures can be spent without anything noticing,
+# and the count of those is the headline this file exists to produce. OMITTING
+# the field is the halt; declaring `none` is an honest reading.
+telemetry_sources:
+  window_meter: "A rolling-window limit the node can read directly."
+  ledger_meter: "An append-only consumption ledger the node writes and folds."
+  host_process_meter: "Host resource accounting for a pool running on this machine."
+  none: "UNMETERED. Nothing observes this pool's consumption."
+
+# The ESTATE RINGS the fence cuts on. These are the kinds the core's estate
+# classifier already answers in (`intentops_core.estate_classifier`), and the
+# same precedence applies upstream: ambiguity resolves toward the STRICTER
+# estate before it ever reaches this file. `unknown` is deliberately absent --
+# it is omitted from a fact vocabulary rather than defaulted, so no rule can
+# fire on an estate nobody observed.
+estate_rings:
+  internal:
+    meaning: "The node's own work: its code, its stores, its governance."
+  venture:
+    meaning: "An undertaking the operator owns."
+  served:
+    meaning: >-
+      An organisation the operator serves. Somebody else's material, and the
+      ring where a permissive error costs a third party rather than the
+      operator.
+  household:
+    meaning: "The operator's private life."
+
+# ---------------------------------------------------------------------------
+# Tiers -- the ROLE a piece of work needs filled. Four, and no more, because a
+# fifth tier is a distinction the operator has to make on every request.
+#
+# `families` is an ORDERED preference list. The first family a live pool can
+# serve wins; the order is the policy, not an accident of the file.
+# ---------------------------------------------------------------------------
+tiers:
+  general:
+    meaning: "The default brain: strategy, synthesis, governance, coding."
+    families: [frontier_general, frontier_long_horizon]
+    default_effort: high
+    default_cache_ttl: long
+  specialist:
+    meaning: "Called in, never resident: long-horizon runs and the hardest single decisions."
+    families: [frontier_long_horizon, frontier_general]
+    default_effort: xhigh
+    default_cache_ttl: long
+  workforce:
+    meaning: "Implementation labour, evidence gathering, doc passes, fan-out legs."
+    families: [mid_workforce]
+    default_effort: medium
+    default_cache_ttl: short
+  tooling:
+    meaning: "Classification, extraction, formatting -- mechanical work at volume."
+    families: [small_tooling, local_small]
+    default_effort: low
+    default_cache_ttl: short
+
+# ---------------------------------------------------------------------------
+# Task shapes -- what the work IS. Each names its tier; effort and cache TTL
+# fall through to the tier's defaults unless the shape states otherwise, and a
+# stated override is a decision somebody made rather than a value that drifted.
+# ---------------------------------------------------------------------------
+task_shapes:
+  interactive:
+    tier: general
+    meaning: "A turn in a live session with a human waiting."
+  review:
+    tier: specialist
+    effort: xhigh
+    cache_ttl: short
+    meaning: "Adversarial review, synthesis, a decision with a cost of being wrong."
+  fanout_leg:
+    tier: workforce
+    cache_ttl: short
+    meaning: "One leg of a parallel dispatch. Never inherits the caller's tier."
+  bulk_read:
+    tier: workforce
+    effort: low
+    meaning: "Volume reading whose cost is pages, not judgement."
+  tick:
+    tier: tooling
+    cache_ttl: short
+    meaning: "A scheduled loop iteration."
+  classify:
+    tier: tooling
+    meaning: "Labelling, extraction, routing -- deterministic-shaped work at volume."
+
+# ---------------------------------------------------------------------------
+# The fence. The ONLY clause in this file that can refuse.
+#
+# Egress is ruled per ESTATE RING, never per model family: whether a payload
+# may cross is a fact about WHOSE material it is, and no constant about which
+# model family is "ours" can answer that question. A policy that fences on a
+# model-family name is a policy that has to be rewritten every time a provider
+# ships a model, and that is exactly when nobody rewrites it.
+#
+# EVERY declared ring needs a rule. A ring with no rule HALTs the loader rather
+# than falling through to permitted -- a fence with a hole in it reads as a
+# fence right up until the moment it matters.
+#
+# WHAT THIS SEED SHIPS, AND WHY
+#   The strictest reading: `local` only, for every ring. A newborn node sends
+#   nothing off its own machine until its operator says which rings may cross
+#   to which classes. That is not a recommendation about anyone's data -- it is
+#   the fail-closed direction, and widening it is an operator act recorded here
+#   in the commit that widens it.
+# ---------------------------------------------------------------------------
+fence:
+  set_by: operator
+  egress:
+    - ring: internal
+      allow: [local]
+      reason: "Not yet ruled. Widen when the operator decides what its own work may reach."
+    - ring: venture
+      allow: [local]
+      reason: "Not yet ruled."
+    - ring: served
+      allow: [local]
+      reason: >-
+        Not yet ruled, and the ring where the permissive error costs somebody
+        who never agreed to it. Widen last, if at all.
+    - ring: household
+      allow: [local]
+      reason: "Not yet ruled."
+
+# ---------------------------------------------------------------------------
+# Pools. EMPTY, on purpose.
+#
+# Required fields per entry -- every one load-bearing, none defaulted:
+#   id                 unique within this file
+#   provider_class     one of the declared classes
+#   families           ordered, non-empty, all declared
+#   status             live | staged | disabled
+#   max_concurrent     declared cap; an integer >= 1
+#   telemetry_source   declared, and `none` is a legitimate answer
+# ---------------------------------------------------------------------------
+statuses:
+  live: "Reachable and in use."
+  staged: "Wired but not in service. Never selected."
+  disabled: "Deliberately off. If it is off on purpose it owes a tagout."
+
+pools:
+  entries: []
+
+# ---------------------------------------------------------------------------
+# A worked example, with FICTIONAL providers.
+#
+# It exists because an example that is never loaded is an example that rots.
+# `load_policy(path, use_example=True)` replaces `pools` and `fence` with the
+# block below and validates it through the same loader, so a change that
+# breaks the schema breaks the example's tests too.
+#
+# Nothing here is a recommendation. The three pools are named after their ROLE
+# in the illustration, and no real provider, product, account or host appears.
+# ---------------------------------------------------------------------------
+example:
+  note: >-
+    Fictional. Loaded only on explicit request; never merged into the shipped
+    policy, and never a default.
+  pools:
+    entries:
+      - id: example-on-machine
+        provider_class: local
+        families: [local_small, small_tooling]
+        status: live
+        max_concurrent: 1
+        telemetry_source: host_process_meter
+        note: "A small model on this machine's own silicon."
+      - id: example-house-subscription
+        provider_class: in_family
+        families: [frontier_general, frontier_long_horizon, mid_workforce, small_tooling]
+        status: live
+        max_concurrent: 4
+        telemetry_source: window_meter
+        note: "The provider family the node's own harness already runs on."
+      - id: example-second-provider
+        provider_class: cross_provider
+        families: [frontier_general, mid_workforce]
+        status: live
+        max_concurrent: 2
+        telemetry_source: none
+        note: >-
+          A different provider, kept for work where its breed is the better
+          one. UNMETERED on purpose in this example, so the headline count has
+          something to report.
+      - id: example-retired-lane
+        provider_class: in_family
+        families: [frontier_general]
+        status: disabled
+        max_concurrent: 1
+        telemetry_source: none
+        note: "Off. Present so the example shows that a disabled pool is never selected."
+  fence:
+    set_by: operator
+    egress:
+      - ring: internal
+        allow: [local, in_family, cross_provider]
+        reason: "The node's own work may reach every breed."
+      - ring: venture
+        allow: [local, in_family]
+        reason: "Stays inside the family the operator already chose."
+      - ring: served
+        allow: [local]
+        reason: "Somebody else's material does not leave this machine."
+      - ring: household
+        allow: [local]
+        reason: "Private life does not leave this machine."

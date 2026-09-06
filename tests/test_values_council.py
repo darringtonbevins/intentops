@@ -105,18 +105,13 @@ def test_the_shipped_surface_loads_and_declares_a_reason_for_every_glob() -> Non
     assert all(entry.reason.strip() for entry in shipped.entries)
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "config/core-surface.yaml declares its Python globs under "
-        "packages/intentops-core/src/intentops_core/**, and this repository's "
-        "layout has no src/ layer -- so nine of thirteen globs match nothing and "
-        "the council currently sees none of the core Python surface, including "
-        "its own module. Reported to the corrector; this marker flips to XPASS "
-        "the moment the declared surface matches the tree, which is the point of "
-        "leaving it here rather than deleting the check."
-    ),
-)
+# The xfail marker that stood here is REMOVED, 2026-09-06. The builder left it
+# addressed to the corrector: the surface's Python globs pointed at a
+# `packages/intentops-core/src/intentops_core/**` layout this repository has
+# never had, so nine of thirteen matched nothing and the council saw none of
+# the core Python surface -- including its own module. The globs are corrected;
+# the check now asserts. Leaving a non-strict xfail in place once it XPASSes
+# would let the surface rot back to dead globs and report the same green.
 @pytest.mark.parametrize(
     "core_path",
     [
@@ -202,16 +197,35 @@ def test_a_redirect_target_is_seen() -> None:
     assert "config/core-surface.yaml" in paths
 
 
-def test_the_documented_blind_spot_is_real(surface, node: Path) -> None:
-    """A quoted target is invisible here, and the module says so.
+def test_the_quoted_target_hole_is_closed(surface, node: Path) -> None:
+    """A ``python -c`` body naming a core path is now SEEN.
 
-    This asserts the blind spot rather than hiding it: the skeleton parser
-    blanks quoted segments by design (it must never read file content), so the
-    out-of-band detectors named in the module docstring are not optional.
+    This was the bypass the work order names: until 2026-09-06 step 0 mined
+    only the quote-blanked skeleton, so this exact command reached the signed
+    birth bundle without convening the council, while the same edit through
+    ``Write`` faced all three readings. Reading a quoted ARGUMENT is not
+    reading file CONTENT.
     """
     reading = review_core_write(
         "Bash",
         {"command": "python -c \"open('genesis/imprint/IMPRINT.md','w').write('x')\""},
+        node_root=node, surface=surface, mode="observe",
+    )
+    assert reading.applies
+    assert normalize_path(reading.path) == "genesis/imprint/imprint.md"
+    assert reading.shell_shape == "inline-interpreter"
+
+
+def test_the_remaining_blind_spot_is_real(surface, node: Path) -> None:
+    """A path assembled at runtime is still invisible, and the module says so.
+
+    Asserted rather than hidden: no widening of a regex over a command string
+    reaches a path held in a shell variable, so the out-of-band detectors --
+    the pre-commit refusal and the session-start re-hash -- are not optional.
+    """
+    reading = review_core_write(
+        "Bash",
+        {"command": "T=$IMPRINT_PATH; printf x >> $T"},
         node_root=node, surface=surface, mode="observe",
     )
     assert reading.verdict is Verdict.NOT_APPLICABLE

@@ -54,13 +54,34 @@ WRITE MODEL
     defect this module exists to prevent.
 
 BLIND SPOTS
-    * STEP 0 READS THE COMMAND SKELETON, NEVER FILE CONTENT. A shell command
-      whose target path lives inside a quoted segment -- a ``python -c`` that
-      opens a core path, a heredoc body -- is INVISIBLE here. That hole is why
-      the design pairs this gate with two out-of-band detectors (a pre-commit
-      refusal of a core diff with no matching ledger row, and a re-hash of the
-      signed imprint bundle at every session start). Neither is in this module,
-      and this gate alone is therefore not a complete steward.
+    * STEP 0 READS THE COMMAND, NEVER FILE CONTENT. It classifies a shell call
+      by its COMMAND SKELETON -- the verb and the shape of the operation (``sed
+      -i``, a heredoc, a redirect, ``git checkout --``, ``python -c``, ``cp``/
+      ``mv``/``rm``, ``tee``) -- and mines the command text for the paths that
+      operation reaches. It never opens a file to decide.
+
+      WIDENED 2026-09-06. Until then step 0 mined only the quote-BLANKED
+      skeleton, so a target named inside a quoted segment -- the whole of a
+      ``python -c`` body, a quoted path, a heredoc -- was invisible, and a
+      shell command onto a core surface simply bypassed this council while the
+      same edit through ``Write`` faced it. That hole is closed: once a
+      MUTATING shape is recognised (or the shape is not recognised at all,
+      which is treated as mutating), the quoted segments are mined for paths
+      too. Reading a quoted ARGUMENT is not reading file CONTENT, and the
+      distinction is the whole design: the classifier's own rule -- never read
+      data as an act -- is preserved by the read-only verb allowlist below,
+      which is what keeps ``grep 'genesis/imprint/x'`` from convening a council.
+    * A COMMAND ASSEMBLED AT RUNTIME IS STILL INVISIBLE. Base64, a path held in
+      a shell variable, a script that writes a second script -- none of that is
+      reachable by a regex over a command string, and no widening of step 0
+      will reach it. This gate raises the cost of an accident; it is not a
+      defence against a determined evasion, and must never be described as one.
+      That residue is why the design pairs this gate with two out-of-band
+      detectors -- a pre-commit refusal of a core diff with no matching ledger
+      row (``scripts/hooks/pre-commit-core-surface.py``), and a re-hash of the
+      signed imprint bundle at every session start
+      (``intentops_core.genesis.integrity``). Neither is in this module, and
+      this gate alone is therefore not a complete steward.
     * THE COMPASS READS A SUMMARY OF THE WRITE, NOT ITS PROSE. A core write
       whose human cost is visible only in its text is not seen at write time.
       Reading raw file content into keyword lenses is how a gate starts holding
@@ -82,10 +103,13 @@ BLIND SPOTS
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
+import posixpath
 import re
+import shlex
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -111,7 +135,6 @@ from intentops_core.gate.classify import (
     SHELL_COMMAND_TOOLS,
     RealityIndicators,
     classify_reaches_reality,
-    command_skeleton,
 )
 from intentops_core.store_guard import StoreLock, lock_for
 from intentops_core.wisdom.ordering import Ordering, OrderingState, OrderingStore
@@ -126,7 +149,12 @@ __all__ = [
     "LedgerState",
     "MODES",
     "REVIEW_KIND",
+    "READ_ONLY_VERBS",
+    "SHELL_SHAPES",
+    "ShellShape",
+    "ShellTarget",
     "SurfaceEntry",
+    "UNRECOGNISED_SHAPE",
     "ValuesReading",
     "Verdict",
     "core_surface_path",
@@ -139,6 +167,9 @@ __all__ = [
     "record_override",
     "review_core_write",
     "selftest",
+    "shell_targets",
+    "target_hits",
+    "target_paths",
 ]
 
 # --------------------------------------------------------------------------
@@ -271,6 +302,26 @@ class CoreSurface:
         for entry in self.entries:
             if entry.literal_prefix and entry.literal_prefix in norm:
                 return entry
+        # Third matcher, added 2026-09-06: a candidate carrying a glob
+        # metachar or a brace fragment. Wave-2 verifier finding: this file's
+        # own rule is "uncertain -> covered", and yet `genesis/*/rules/x`,
+        # `genesis/{imprint}/...` and `genesis/imprin?/...` all returned
+        # CORE=[] -- the two matchers above compare literal text, and a token
+        # the shell has not expanded yet is not literal text. It is also not a
+        # path the reader can rule out, which is the whole basis of the rule.
+        if any(ch in norm for ch in "*?[{"):
+            # A brace group is a shell EXPANSION, not a pattern fnmatch knows:
+            # `{imprint}` and `{imprint,rules}` both stand for text nobody has
+            # resolved yet, so they widen to `*` for this comparison only.
+            widened = re.sub(r"\{[^{}]*\}", "*", norm)
+            for entry in self.entries:
+                if not entry.literal_prefix:
+                    continue
+                depth = entry.literal_prefix.strip("/").count("/") + 1
+                lead = "/".join(widened.split("/")[:depth])
+                if fnmatch.fnmatch(entry.literal_prefix.strip("/"), lead) \
+                        or fnmatch.fnmatch(lead, entry.literal_prefix.strip("/")):
+                    return entry
         return None
 
 
@@ -286,6 +337,17 @@ def normalize_path(candidate: str) -> str:
     text = text.replace("\\", "/").lower()
     if len(text) > 2 and text[1] == ":":
         text = text[2:]
+    # Collapse '//' and '/./'. Wave-2 verifier finding: `genesis//imprint/...`
+    # and `genesis/./imprint/...` are the SAME file to every filesystem and
+    # were different strings to this matcher, so either spelling reached a
+    # declared surface with CORE=[]. '..' is deliberately PRESERVED -- resolving
+    # it would let `a/../genesis/imprint` normalise into a path the reader did
+    # not write, and the surface file's rule is that an unrecognised shape is
+    # still core, never that it is resolved on the caller's behalf.
+    if ".." not in text.split("/"):
+        collapsed = posixpath.normpath(text)
+        # normpath turns "" and "." into "."; keep the empty answer empty.
+        text = "" if collapsed == "." else collapsed
     while text.startswith("./"):
         text = text[2:]
     return text.lstrip("/")
@@ -655,20 +717,291 @@ def record_override(
 # --------------------------------------------------------------------------
 
 #: A shell token is treated as a candidate path when it carries a separator or
-#: a known artifact extension. Tokens inside quoted segments are already blanked
-#: by ``command_skeleton`` before this runs -- see the module blind spots.
+#: a known artifact extension.
 _PATH_TOKEN = re.compile(r"[A-Za-z0-9_.~/\\*?\[\]-]{3,}")
 _PATHISH_EXT = (
     ".py", ".yaml", ".yml", ".json", ".md", ".toml", ".ini", ".cfg", ".sig",
 )
 
+#: Characters that hold DATA in a shell command. Blanked before mining paths,
+#: so a quoted path becomes a bare token instead of vanishing. This is the one
+#: substantive difference from ``command_skeleton``, which blanks the whole
+#: quoted RUN -- correct for "is this an act", wrong for "what does it reach".
+_QUOTE_CHARS = str.maketrans({'"': " ", "'": " ", "`": " "})
 
-def target_paths(tool: str, tool_input: Mapping[str, Any]) -> List[str]:
-    """Every path this tool call plausibly writes to.
+#: How a command is split into segments for verb reading. A pipeline of
+#: read-only verbs is read-only; one mutating verb anywhere makes the whole
+#: call mutating, because the segments share a process tree and a filesystem.
+_SEGMENT_SPLIT = re.compile(r"\|\||&&|[;|\n]")
 
-    File-write tools state their target outright. Shell tools are read through
-    the command SKELETON only -- never file content -- which is both the
-    privacy property and the blind spot documented at the top of this module.
+#: Leading tokens that cannot write. The allowlist is CLOSED and short on
+#: purpose: an unrecognised verb is treated as MUTATING, so the cost of an
+#: omission here is one unnecessary council reading, and the cost of a wrong
+#: ADDITION is a silent bypass. Errors are pushed onto the cheap side.
+READ_ONLY_VERBS: Tuple[str, ...] = (
+    "cat", "head", "tail", "less", "more", "nl", "wc", "file", "stat",
+    # `find` and `sort` were REMOVED 2026-09-06 (wave-2 verifier finding):
+    # `find -delete` and `find -exec rm` destroy, and `sort -o` overwrites its
+    # own input. They sat on a list whose own design note says a wrong ADDITION
+    # is a silent bypass -- which is precisely what they were.
+    "grep", "egrep", "fgrep", "rg", "ag", "ack", "ls", "dir", "tree",
+    "diff", "cmp", "md5sum", "sha256sum", "shasum", "echo", "printf", "pwd",
+    "which", "whoami", "date", "env", "true", "false", "uniq", "cut",
+    "get-content", "get-childitem", "select-string", "test-path", "write-host",
+    "write-output", "measure-object", "get-item", "get-filehash",
+)
+
+#: Git subcommands that only read. ``git`` is far too common to treat as one
+#: verb, and far too dangerous to allowlist whole (``git checkout --`` restores
+#: a file over an edit; ``git reset --hard`` destroys one).
+READ_ONLY_GIT: Tuple[str, ...] = (
+    "status", "diff", "log", "show", "blame", "branch", "remote", "config",
+    "rev-parse", "ls-files", "describe", "shortlog", "grep",
+)
+# ``stash`` is deliberately ABSENT from the line above. It reads like an
+# inspection verb and it is not: `git stash` removes working-tree changes,
+# which is exactly the shape of loss this council exists to see.
+
+
+@dataclass(frozen=True)
+class ShellShape:
+    """One recognised MUTATING command skeleton, and why it can reach a file.
+
+    ``reason`` is required for the same purpose it is required on a surface
+    entry: a pattern with no stated reason is a rule nobody can argue with.
+    """
+
+    id: str
+    reason: str
+    pattern: "re.Pattern[str]"
+
+
+def _shape(shape_id: str, expression: str, reason: str) -> ShellShape:
+    return ShellShape(shape_id, reason, re.compile(expression, re.IGNORECASE))
+
+
+#: The declared mutating shapes. Matched against the RAW command text, because
+#: the shape of an operation (a heredoc marker, a redirect, an in-place flag)
+#: is exactly what quoting hides from ``command_skeleton``.
+SHELL_SHAPES: Tuple[ShellShape, ...] = (
+    _shape("sed-in-place", r"\bsed\b[^|;&\n]*\s-[a-z]*i\b",
+           "sed -i rewrites the named file in place, with no diff and no backup"),
+    _shape("heredoc-redirect", r"<<-?\s*[\"']?[A-Za-z_][A-Za-z0-9_]*",
+           "a heredoc writes its whole body to a target with no file-write tool involved"),
+    _shape("redirect-write", r"(?<![0-9<>&])>>?(?!&)",
+           "a shell redirect creates or truncates the target outright"),
+    _shape("tee", r"\btee\b",
+           "tee writes every named file while looking like a pipeline stage"),
+    _shape("git-restore", r"\bgit\b[^|;&\n]*\b(?:checkout\s+--|restore|reset\s+--hard|clean\s+-[a-z]*f)",
+           "git checkout -- / restore / reset --hard silently replaces working-tree files"),
+    _shape("inline-interpreter", r"\b(?:python[0-9.]*|py|perl|ruby|node|deno)\b[^|;&\n]*\s-(?:c|e)\b",
+           "an inline interpreter body can open and write any path, entirely inside quotes"),
+    _shape("powershell-inline", r"\b(?:powershell|pwsh)\b[^|;&\n]*\s-(?:c|command|encodedcommand)\b",
+           "an inline PowerShell body can write any path, entirely inside quotes"),
+    _shape("powershell-write", r"\b(?:Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item|Set-ItemProperty)\b",
+           "the PowerShell write cmdlets reach a path without any file-write tool"),
+    _shape("copy-move-remove", r"(?:^|[\s;|&])(?:cp|mv|rm|ln|install|rsync|touch|truncate|shred|unlink)\b",
+           "cp / mv / rm / ln replace or destroy the target file directly"),
+    _shape("dd", r"\bdd\b[^|;&\n]*\bof=",
+           "dd of= writes raw bytes over the target"),
+    _shape("archive-extract", r"\b(?:tar|unzip|7z|Expand-Archive)\b[^|;&\n]*(?:-x|\bx\b|-o)",
+           "an extraction overwrites whatever paths the archive happens to name"),
+    _shape("apply-patch", r"\b(?:patch|git\s+apply|git\s+am)\b",
+           "a patch rewrites the files named inside it, which are not in the command"),
+)
+
+#: The label used when no declared shape matched and the verb is not on the
+#: read-only allowlist. It is MUTATING, deliberately: an operation nobody
+#: recognised is not an operation known to be safe.
+UNRECOGNISED_SHAPE = "unrecognised-shape"
+
+
+@dataclass(frozen=True)
+class ShellTarget:
+    """One path a shell call reaches, and the shape that revealed it."""
+
+    path: str
+    shape: str
+    reason: str
+
+
+def _leading_verb(segment: str) -> str:
+    """The first executable token of a segment, with env prefixes skipped."""
+    for token in segment.strip().split():
+        if "=" in token and not token.startswith("-") and "/" not in token.split("=")[0]:
+            continue  # VAR=value prefix
+        if token in ("sudo", "command", "exec", "time", "nohup", "&"):
+            continue
+        name = token.split("/")[-1].split("\\")[-1].lower()
+        return name[:-4] if name.endswith(".exe") else name
+    return ""
+
+
+def _is_read_only(command: str) -> bool:
+    """True when EVERY segment's verb is on the closed read-only allowlist."""
+    segments = [s for s in _SEGMENT_SPLIT.split(command) if s.strip()]
+    if not segments:
+        return False
+    for segment in segments:
+        verb = _leading_verb(segment)
+        if not verb:
+            return False
+        if verb == "git":
+            tokens = [t for t in segment.strip().split()[1:] if not t.startswith("-")]
+            if not tokens or tokens[0].lower() not in READ_ONLY_GIT:
+                return False
+            continue
+        if verb not in READ_ONLY_VERBS:
+            return False
+    return True
+
+
+def classify_shell_shape(command: str) -> Optional[ShellShape]:
+    """The first declared mutating shape this command matches, or None.
+
+    None means "no declared mutating shape". It does NOT mean read-only --
+    :func:`shell_targets` still treats an unrecognised verb as mutating.
+    """
+    text = command or ""
+    if not text.strip():
+        return None
+    for shape in SHELL_SHAPES:
+        if shape.pattern.search(text):
+            return shape
+    return None
+
+
+def _mine_paths(text: str) -> List[str]:
+    """Path-shaped tokens in ``text``, quotes blanked rather than contents."""
+    out: List[str] = []
+    for match in _PATH_TOKEN.finditer(text.translate(_QUOTE_CHARS)):
+        token = match.group(0).strip(",;:()[]")
+        if not token:
+            continue
+        if "/" in token or "\\" in token or token.lower().endswith(_PATHISH_EXT):
+            if token not in out:
+                out.append(token)
+    return out
+
+
+def shell_targets(command: str) -> List[ShellTarget]:
+    """Every path a shell command plausibly reaches, with the shape that saw it.
+
+    Three outcomes, and the middle one is the whole point:
+
+      * a declared MUTATING shape matched -> mine the full command text,
+        quoted segments included, because that is where ``python -c`` and a
+        quoted path hide;
+      * no declared shape, and every verb is on the read-only allowlist ->
+        NO targets. ``grep 'genesis/imprint/x' log`` does not convene a council;
+      * no declared shape and an unrecognised verb -> mine anyway, labelled
+        ``unrecognised-shape``. An operation nobody recognised is not an
+        operation known to be safe.
+    """
+    text = command or ""
+    if not text.strip():
+        return []
+    shape = classify_shell_shape(text)
+    if shape is None:
+        if _is_read_only(text):
+            return []
+        shape = ShellShape(
+            UNRECOGNISED_SHAPE,
+            "no declared mutating shape matched and the verb is not on the "
+            "read-only allowlist, so the call is read as capable of writing",
+            re.compile(r"(?!)"),
+        )
+    return [ShellTarget(p, shape.id, shape.reason)
+            for p in _mine_paths(_resolve_context(text))]
+
+
+#: `cd` / `pushd` / `Set-Location`, and the shells that spell them differently.
+_CHDIR_VERBS = ("cd", "pushd", "set-location", "sl", "chdir")
+
+_ASSIGN_RE = re.compile(r"(?:^|[;&|\n]|\s)([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|]+)")
+_VAR_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+
+
+def _resolve_context(command: str) -> str:
+    """Rewrite a command so its relative paths carry the directory they run in.
+
+    Two bypasses the wave-2 verifier executed, both of which left CORE=[] on a
+    command that plainly writes a core rule:
+
+      * ``cd genesis && cp x imprint/rules/honesty.md`` -- the mined token was
+        ``imprint/rules/honesty.md``, which is under no declared glob, while
+        the file actually written is ``genesis/imprint/rules/honesty.md``;
+      * ``A=genesis B=imprint; cp x $A/$B/rules/honesty.md`` -- the mined token
+        was ``$A/$B/rules/honesty.md``, which matches nothing.
+
+    This is deliberately a TEXT rewrite feeding the miner, not an evaluator. It
+    resolves only what is visible in the same command: a literal ``cd`` target
+    and simple ``VAR=value`` assignments. Anything it cannot resolve is left
+    exactly as it was -- an unresolved ``$HOME`` stays ``$HOME`` and, carrying
+    no declared prefix, is mined as an unrecognised token rather than being
+    guessed at. Under-resolving costs a missed prefix; over-resolving would
+    invent a path the operator never wrote.
+    """
+    text = command or ""
+    # A brace group ADJACENT TO A SLASH is an unresolved path segment, and the
+    # path miner's character class does not include braces -- so
+    # `genesis/{imprint}/rules/honesty.md` mined as two fragments, neither of
+    # which is under any glob. Widening it to `*` (which the miner and the
+    # surface matcher both already handle) keeps the token whole. Only
+    # slash-adjacent groups are touched, so a JSON literal or a `python -c`
+    # dict inside the command is left alone.
+    text = re.sub(r"(?<=/)\{[^{}\s]*\}", "*", text)
+    text = re.sub(r"\{[^{}\s]*\}(?=/)", "*", text)
+    assignments = {name: value.strip("'\"")
+                   for name, value in _ASSIGN_RE.findall(text)}
+    if assignments:
+        def _sub(match: "re.Match[str]") -> str:
+            return assignments.get(match.group(1), match.group(0))
+        text = _VAR_RE.sub(_sub, text)
+
+    prefix = ""
+    for segment in _SEGMENT_SPLIT.split(text):
+        stripped = segment.strip()
+        if not stripped:
+            continue
+        try:
+            tokens = shlex.split(stripped, posix=True)
+        except ValueError:            # unbalanced quotes -- mine it as written
+            tokens = stripped.split()
+        if not tokens:
+            continue
+        if tokens[0].lower() in _CHDIR_VERBS and len(tokens) > 1:
+            target = tokens[1]
+            if target in ("-", "~") or target.startswith("$"):
+                prefix = ""       # unresolvable; stop claiming to know where we are
+            elif target.startswith("/") or (len(target) > 1 and target[1] == ":"):
+                prefix = target.rstrip("/") + "/"
+            else:
+                prefix = (prefix + target).rstrip("/") + "/"
+            continue
+        if prefix:
+            # Re-emit the segment with the prefix attached to each path-ish,
+            # clearly-relative token. Absolute tokens and flags are untouched.
+            rebuilt = []
+            for token in tokens:
+                if token.startswith("-") or token.startswith("/") \
+                        or token.startswith("$") \
+                        or (len(token) > 1 and token[1] == ":"):
+                    rebuilt.append(token)
+                elif "/" in token or "\\" in token \
+                        or token.lower().endswith(_PATHISH_EXT):
+                    rebuilt.append(prefix + token)
+                else:
+                    rebuilt.append(token)
+            text += "\n" + " ".join(rebuilt)
+    return text
+
+
+def target_hits(tool: str, tool_input: Mapping[str, Any]) -> List[ShellTarget]:
+    """Every path this tool call plausibly writes to, with its shape.
+
+    File-write tools state their target outright and carry the shape
+    ``file-write``. Shell tools go through :func:`shell_targets`.
     """
     if not isinstance(tool_input, Mapping):
         return []
@@ -679,20 +1012,21 @@ def target_paths(tool: str, tool_input: Mapping[str, Any]) -> List[str]:
             or tool_input.get("path")
             or ""
         )
-        return [target] if target else []
-    if tool in SHELL_COMMAND_TOOLS:
-        command = str(tool_input.get("command") or "")
-        if not command:
+        if not target:
             return []
-        skeleton = command_skeleton(command)
-        out: List[str] = []
-        for match in _PATH_TOKEN.finditer(skeleton):
-            token = match.group(0)
-            if "/" in token or "\\" in token or token.lower().endswith(_PATHISH_EXT):
-                if token not in out:
-                    out.append(token)
-        return out
+        return [ShellTarget(target, "file-write", "the tool names its target outright")]
+    if tool in SHELL_COMMAND_TOOLS:
+        return shell_targets(str(tool_input.get("command") or ""))
     return []
+
+
+def target_paths(tool: str, tool_input: Mapping[str, Any]) -> List[str]:
+    """Every path this tool call plausibly writes to.
+
+    The path-only view of :func:`target_hits`, kept because most callers only
+    need the paths and a shape they must then ignore is noise.
+    """
+    return [hit.path for hit in target_hits(tool, tool_input)]
 
 
 # --------------------------------------------------------------------------
@@ -760,6 +1094,8 @@ class ValuesReading:
     path: str = ""
     surface_glob: str = ""
     surface_reason: str = ""
+    shell_shape: str = ""
+    shell_shape_reason: str = ""
     mode: str = DEFAULT_MODE
     tier: str = "T1"
     reaches_reality: bool = False
@@ -788,6 +1124,8 @@ class ValuesReading:
             "normalized_path": normalize_path(self.path),
             "surface_glob": self.surface_glob,
             "surface_reason": self.surface_reason,
+            "shell_shape": self.shell_shape,
+            "shell_shape_reason": self.shell_shape_reason,
             "tier": self.tier,
             "reaches_reality": self.reaches_reality,
             "reasons": list(self.reasons),
@@ -809,6 +1147,8 @@ class ValuesReading:
         lines = [head]
         if self.surface_reason:
             lines.append(f"  surface: {self.surface_glob} ({self.surface_reason})")
+        if self.shell_shape and self.shell_shape != "file-write":
+            lines.append(f"  shell shape: {self.shell_shape} -- {self.shell_shape_reason}")
         if self.ordering_ids:
             lines.append(
                 f"  ordering: {', '.join(self.ordering_ids)} -> {self.ordering_on_match}"
@@ -919,17 +1259,17 @@ def review_core_write(
         raise CouncilError(f"mode {resolved_mode!r} is not one of {MODES}")
     surf = surface if surface is not None else load_core_surface()
 
-    candidates = target_paths(tool, tool_input)
-    hit: Optional[Tuple[str, SurfaceEntry]] = None
-    for candidate in candidates:
-        entry = surf.match(candidate)
+    hit: Optional[Tuple[ShellTarget, SurfaceEntry]] = None
+    for candidate in target_hits(tool, tool_input):
+        entry = surf.match(candidate.path)
         if entry is not None:
             hit = (candidate, entry)
             break
     if hit is None:
         return ValuesReading(verdict=Verdict.NOT_APPLICABLE, tool=tool, mode=resolved_mode)
 
-    path, entry = hit
+    target, entry = hit
+    path = target.path
     command = str(tool_input.get("command") or "") if tool in SHELL_COMMAND_TOOLS else ""
     body = content
     if body is None and tool in FILE_WRITE_TOOLS:
@@ -952,12 +1292,20 @@ def review_core_write(
         path=path,
         surface_glob=entry.glob,
         surface_reason=entry.reason,
+        shell_shape=target.shape,
+        shell_shape_reason=target.reason,
         mode=resolved_mode,
         tier=tier,
         reaches_reality=reaches,
     )
     if classification:
         reading.reasons.append(f"classifier: {classification[1]} ({tier})")
+    if tool in SHELL_COMMAND_TOOLS:
+        reading.reasons.append(
+            f"step 0: a shell call of shape {target.shape!r} reaches a declared "
+            f"core surface -- {target.reason}. It is routed exactly as a Write "
+            "would be; a shell is not a side door."
+        )
 
     # -- reading 1: the ordering consult. It answers before anybody votes. ----
     state = _ordering_state(Path(node_root))
@@ -1331,6 +1679,47 @@ def selftest() -> int:
         )
         check("a shell command targeting a core path is seen",
               r.applies and normalize_path(r.path).startswith("genesis/imprint/"), r.path)
+
+        # 4b. Every declared mutating shape reaches the same core path, and a
+        #     read-only command naming it does not convene anything. This is the
+        #     bypass the widening closed: a shell is not a side door.
+        core = "genesis/imprint/IMPRINT.md"
+        shaped = {
+            "sed-in-place": f"sed -i 's/a/b/' {core}",
+            "heredoc-redirect": f"cat <<'EOF' | sponge {core}",
+            "redirect-write": f"printf x >> {core}",
+            "tee": f"echo x | tee {core}",
+            "git-restore": f"git checkout -- {core}",
+            "inline-interpreter": f"python -c \"open('{core}','w').write('x')\"",
+            "powershell-write": f"Set-Content -Path '{core}' -Value 'x'",
+            "copy-move-remove": f"cp /tmp/x {core}",
+            "apply-patch": f"git apply /tmp/one.patch  # touches {core}",
+        }
+        for shape_id, command in shaped.items():
+            r = review_core_write(
+                "Bash", {"command": command},
+                node_root=root, surface=surface, mode="observe",
+            )
+            check(f"shell shape {shape_id} reaches the council",
+                  r.applies and r.shell_shape == shape_id,
+                  f"{r.verdict.value}/{r.shell_shape or 'none'}")
+
+        for benign in (f"grep -n imprint {core}", f"git diff -- {core}",
+                       f"cat {core} | head -20"):
+            r = review_core_write(
+                "Bash", {"command": benign},
+                node_root=root, surface=surface, mode="observe",
+            )
+            check("a read-only command naming a core path convenes nothing",
+                  r.verdict is Verdict.NOT_APPLICABLE, benign[:34])
+
+        r = review_core_write(
+            "Bash", {"command": f"weirdtool --apply {core}"},
+            node_root=root, surface=surface, mode="observe",
+        )
+        check("an unrecognised verb is read as capable of writing",
+              r.applies and r.shell_shape == UNRECOGNISED_SHAPE,
+              r.shell_shape or "none")
 
         # 5. HOLD: a REFRAIN carrying a conscience hold, on a supplied proposal.
         #    Two guardians object independently: Rogers (a named person, reached

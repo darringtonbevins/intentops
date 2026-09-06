@@ -59,6 +59,10 @@ __all__ = [
     "b58encode",
     "verify_provenance",
     "selftest",
+    "canonical_imprint_payload",
+    "IMPRINT_SIGNING_SCOPE",
+    "ROOT_ROLES",
+    "SIGNS_VOCABULARY",
 ]
 
 _MANIFEST_RELPATH = Path("genesis") / "imprint" / "IMPRINT-MANIFEST.yaml"
@@ -194,6 +198,95 @@ def _check_roots_file(repo_root: Path) -> Tuple[Check, Optional[Dict[str, Any]]]
                      {"roots": 0}), None
     return Check("G1.1-roots-present", q, "PASS",
                  f"{len(roots)} root(s) declared", {"roots": len(roots)}), doc
+
+
+#: Closed vocabularies, declared in config/trust-roots.yaml's own comments and
+#: -- until this check existed -- enforced by nothing. An undeclared value is a
+#: hard exit, never a default of everything-applies (no-silent-failures rule 6).
+ROOT_ROLES = frozenset({"release_root", "release_intermediate", "attribution"})
+SIGNS_VOCABULARY = frozenset({
+    "invariant_bundle", "imprint_manifest", "archetype_catalogue",
+    "release_artifact", "trust_roots_file", "revocation_list",
+    "node_identity_cert", "alignment_record", "ordering_ruling",
+    "core_mechanic_change",
+})
+
+
+def _check_root_policy(doc: Dict[str, Any]) -> Check:
+    """G1.2b -- does the trust-roots file only contain roots it may contain?
+
+    The refusal that matters here is CROSS-CERTIFICATION: an operator root
+    smuggled into the project's release trust-roots file, or a role claiming to
+    have been issued by a release root when its own role forbids it. Before
+    this check, that refusal existed only as a prose ``note`` string written
+    into a JSON artifact at G2 -- so a planted
+    ``{role: operator_root, issued_by: R-INTENTOPS, status: active}`` root
+    passed G1.2 and G1.4 with three carriers agreeing, and nothing anywhere
+    said no.
+
+    ``operator_root`` is a legitimate role -- it is simply never legitimate
+    HERE. A node's own root is minted at G2 and lives in the node's local
+    ``.intentops/trust/operator-root.pub.json``; a project release file that
+    carries one is either a mistake or the attack.
+    """
+    q = "does every root carry a legal role, issuer, and signing scope?"
+    findings: List[str] = []
+    seen_ids: Dict[str, int] = {}
+    seen_fingerprints: Dict[str, int] = {}
+    roots = doc.get("roots") or []
+    for n, root in enumerate(roots, start=1):
+        if not isinstance(root, dict):
+            findings.append(f"root #{n} is not a mapping")
+            continue
+        rid = str(root.get("id"))
+        role = root.get("role")
+        if role == "operator_root":
+            findings.append(
+                f"{rid}: role operator_root has no place in a project "
+                f"trust-roots file -- an operator's root is minted at G2 and "
+                f"lives in the node's own .intentops/trust/, never here"
+            )
+        elif role not in ROOT_ROLES:
+            findings.append(
+                f"{rid}: role {role!r} is not in the declared vocabulary "
+                f"{sorted(ROOT_ROLES)}"
+            )
+        issued_by = root.get("issued_by")
+        if role == "release_root" and issued_by not in (None, "self", rid):
+            findings.append(
+                f"{rid}: a release_root is self-issued; this one claims "
+                f"issued_by {issued_by!r}"
+            )
+        if role not in ("release_root", None) and issued_by in ("self", None):
+            findings.append(f"{rid}: role {role!r} must name its issuer")
+        signs = root.get("signs")
+        if signs is None:
+            findings.append(f"{rid}: no `signs` list -- refusing to assume one")
+        else:
+            for value in signs:
+                if value not in SIGNS_VOCABULARY:
+                    findings.append(
+                        f"{rid}: signs value {value!r} is undeclared")
+        seen_ids[rid] = seen_ids.get(rid, 0) + 1
+        fp = root.get("fingerprint")
+        if isinstance(fp, str) and fp != trust_pin.PLACEHOLDER_FINGERPRINT:
+            seen_fingerprints[fp] = seen_fingerprints.get(fp, 0) + 1
+    for rid, count in seen_ids.items():
+        if count > 1:
+            findings.append(f"{rid}: declared {count} times")
+    for fp, count in seen_fingerprints.items():
+        if count > 1:
+            findings.append(f"fingerprint {fp} is claimed by {count} roots")
+
+    if findings:
+        # Carriers disagreeing with the policy they declare is a contradiction,
+        # not absent evidence: the development flag must not open it.
+        return Check("G1.2b-root-policy", q, "HALT", "; ".join(findings[:6]),
+                     {"findings": len(findings)}, contradiction=True)
+    return Check("G1.2b-root-policy", q, "PASS",
+                 f"{len(roots)} root(s) carry legal roles, issuers and signing "
+                 f"scopes; no operator root, no duplicate id or fingerprint",
+                 {"roots": len(roots)})
 
 
 def _check_status(doc: Dict[str, Any]) -> Check:
@@ -364,15 +457,122 @@ def _check_imprint_hashes(repo_root: Path) -> Check:
                  contradiction=contradiction)
 
 
-def _check_imprint_signature(repo_root: Path) -> Check:
+#: The ONE definition of the imprint manifest's signing scope. Written here
+#: rather than inline at the verifier and again at the signer, because two
+#: definitions of a canonical payload is how a signature that verifies on the
+#: signer's machine fails on every other one.
+IMPRINT_SIGNING_SCOPE = (
+    "the GENERATED artifacts block of genesis/imprint/IMPRINT-MANIFEST.yaml, "
+    "from the BEGIN marker line through the END marker line inclusive, "
+    "newline-normalised to LF, encoded UTF-8"
+)
+
+_GENERATED_BEGIN = "# >>> BEGIN GENERATED artifacts"
+_GENERATED_END = "# <<< END GENERATED artifacts"
+
+
+def canonical_imprint_payload(manifest_text: str) -> bytes:
+    """The exact bytes an imprint-manifest signature covers.
+
+    The payload is the GENERATED hash block and nothing else. That block names
+    every imprint artifact and its SHA-256, so signing it signs the whole
+    bundle transitively, while leaving the prose header, the bundle map, and
+    the ``signatures`` list itself editable -- a signature that covered its own
+    container could not be constructed at all.
+
+    Newlines are normalised to LF **before** signing. That is not tidiness:
+    falsifier F1 established that this repository ships ``.gitattributes``
+    ``eol=lf`` while the build machine's working copy held CRLF, so a signature
+    over raw bytes would verify on exactly one checkout in the world.
+
+    Raises :class:`Halt` when the markers are absent, refusing to sign or
+    verify a payload whose extent would be a guess.
+    """
+    if _GENERATED_BEGIN not in manifest_text or _GENERATED_END not in manifest_text:
+        raise Halt(
+            "the imprint manifest carries no GENERATED artifacts block, so the "
+            "signing scope is undefined",
+            remedy="run python scripts/genesis/build_manifest.py --write",
+        )
+    _head, rest = manifest_text.split(_GENERATED_BEGIN, 1)
+    body, _tail = rest.split(_GENERATED_END, 1)
+    block = _GENERATED_BEGIN + body + _GENERATED_END
+    return block.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def _verify_ed25519(public_key_pem: Any, signature: Any,
+                    payload: bytes) -> Tuple[bool, str]:
+    """Verify one Ed25519 signature over ``payload``. Returns (ok, why-not).
+
+    Every failure path -- unloadable key, non-hex signature, wrong length, bad
+    signature, wrong key type -- returns False with a reason. None of them
+    raises, because a traceback out of a gate is an ungraded outcome.
+    """
+    if not isinstance(public_key_pem, str) or "BEGIN" not in public_key_pem:
+        return False, "the root carries no usable PEM public key"
+    try:
+        raw = bytes.fromhex(str(signature))
+    except ValueError:
+        return False, "the signature is not hex"
+    if len(raw) != 64:
+        return False, f"an Ed25519 signature is 64 bytes, this one is {len(raw)}"
+    try:
+        from cryptography.exceptions import InvalidSignature  # noqa: PLC0415
+        from cryptography.hazmat.primitives.serialization import (  # noqa: PLC0415
+            load_pem_public_key,
+        )
+    except ImportError:  # pragma: no cover - guarded by crypto_available()
+        return False, "the Ed25519 implementation is not importable"
+    try:
+        key = load_pem_public_key(public_key_pem.encode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - any load failure is one finding
+        return False, f"the root's public key will not load: {exc}"
+    try:
+        key.verify(raw, payload)
+    except InvalidSignature:
+        return False, "the bytes do not match this key"
+    except Exception as exc:  # noqa: BLE001 - wrong key type, malformed input
+        return False, f"verification could not be performed: {exc}"
+    return True, ""
+
+
+def _signing_roots(doc: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Active roots in the trust-roots document entitled to sign the imprint."""
+    if not isinstance(doc, dict):
+        return []
+    out: List[Dict[str, Any]] = []
+    for root in doc.get("roots") or []:
+        if isinstance(root, dict) and root.get("status") == "active" \
+                and "imprint_manifest" in (root.get("signs") or []):
+            out.append(root)
+    return out
+
+
+def _check_imprint_signature(repo_root: Path,
+                             doc: Optional[Dict[str, Any]] = None) -> Check:
     q = "who signed this imprint, and does the signature verify?"
     path = repo_root / _MANIFEST_RELPATH
     if not path.exists():
         return Check("G1.7-imprint-signature", q, "HALT",
                      f"absent: {_MANIFEST_RELPATH.as_posix()}", {})
-    doc = _yaml().safe_load(path.read_text(encoding="utf-8")) or {}
-    sigs = doc.get("signatures")
-    status = doc.get("status")
+    text = path.read_text(encoding="utf-8")
+    try:
+        manifest = _yaml().safe_load(text) or {}
+    except Exception as exc:  # noqa: BLE001 - any parse failure is one finding
+        # The file is HERE and does not say what an imprint manifest says. That
+        # is carriers contradicting each other, not evidence not yet minted, so
+        # the development flag does not open it -- and it is a GRADED halt
+        # rather than an uncaught ParserError, which would escape the phase
+        # entirely and never reach the journal.
+        return Check("G1.7-imprint-signature", q, "HALT",
+                     f"unparseable: {exc}",
+                     {"path": _MANIFEST_RELPATH.as_posix()}, contradiction=True)
+    if not isinstance(manifest, dict):
+        return Check("G1.7-imprint-signature", q, "HALT",
+                     "the imprint manifest's root is not a mapping", {},
+                     contradiction=True)
+    sigs = manifest.get("signatures")
+    status = manifest.get("status")
     if sigs is None:
         return Check("G1.7-imprint-signature", q, "HALT",
                      "the manifest has no `signatures` key -- a field nobody "
@@ -382,9 +582,67 @@ def _check_imprint_signature(repo_root: Path) -> Check:
                      "the imprint manifest is UNSIGNED. Unsigned and valid must "
                      "never be indistinguishable, so this is a refusal, not a "
                      "warning", {"status": status, "signatures": 0})
-    return Check("G1.7-imprint-signature", q, "REFUSE",
-                 "signatures are present but no minted release root exists to "
-                 "verify them against", {"signatures": len(sigs)})
+
+    # Signatures exist. Whether they CAN be checked is a different question
+    # from whether they are VALID, and conflating the two is the defect this
+    # correction closes: before it, a correctly-signed manifest and a forged
+    # all-zero signature returned the identical REFUSE, so `verified` could
+    # never be True on any clone and no forgery was distinguishable from a real
+    # key. Fail-closed, but blind -- and a blind gate that has never once said
+    # PASS is indistinguishable from a broken one.
+    if not trust_pin.pin_is_minted():
+        return Check("G1.7-imprint-signature", q, "REFUSE",
+                     "signatures are present but the compiled release pin is a "
+                     "placeholder, so there is no minted root to verify them "
+                     "against",
+                     {"signatures": len(sigs), "pin": trust_pin.PIN_STATE})
+    signers = _signing_roots(doc)
+    if not signers:
+        return Check("G1.7-imprint-signature", q, "REFUSE",
+                     "signatures are present and the pin is minted, but no "
+                     "ACTIVE root in this clone's trust-roots file declares "
+                     "`imprint_manifest` among the things it signs",
+                     {"signatures": len(sigs)})
+    if not crypto_available():
+        # Never "degrade gracefully" -- that is the upstream fail-open.
+        return Check("G1.7-imprint-signature", q, "HALT",
+                     "signatures are present and verifiable in principle, but "
+                     "the Ed25519 implementation is not importable on this host",
+                     {"remedy": "pip install cryptography"})
+    try:
+        payload = canonical_imprint_payload(text)
+    except Halt as exc:
+        return Check("G1.7-imprint-signature", q, "HALT", exc.render(), {},
+                     contradiction=True)
+
+    by_key_id = {str(r.get("key_id")): r for r in signers}
+    verified: List[str] = []
+    for entry in sigs:
+        if not isinstance(entry, dict):
+            return Check("G1.7-imprint-signature", q, "HALT",
+                         "a signature entry is not a mapping", {},
+                         contradiction=True)
+        key_id = str(entry.get("key_id"))
+        root = by_key_id.get(key_id)
+        if root is None:
+            return Check("G1.7-imprint-signature", q, "HALT",
+                         f"the manifest is signed by key_id {key_id!r}, which "
+                         f"is not an active imprint-signing root in this "
+                         f"clone's trust-roots file",
+                         {"key_id": key_id, "known": sorted(by_key_id)},
+                         contradiction=True)
+        ok, why = _verify_ed25519(root.get("public_key_pem"),
+                                  entry.get("signature"), payload)
+        if not ok:
+            return Check("G1.7-imprint-signature", q, "HALT",
+                         f"the signature by {key_id} does NOT verify over "
+                         f"{IMPRINT_SIGNING_SCOPE}: {why}",
+                         {"key_id": key_id}, contradiction=True)
+        verified.append(key_id)
+    return Check("G1.7-imprint-signature", q, "PASS",
+                 f"{len(verified)} signature(s) verify over the canonical "
+                 f"payload ({IMPRINT_SIGNING_SCOPE})",
+                 {"key_ids": verified, "scope": IMPRINT_SIGNING_SCOPE})
 
 
 def _check_archetypes(repo_root: Path, operator_fingerprint: Optional[str]) -> Check:
@@ -393,7 +651,18 @@ def _check_archetypes(repo_root: Path, operator_fingerprint: Optional[str]) -> C
     if not path.exists():
         return Check("G1.8-archetypes", q, "REFUSE",
                      f"absent: {_CATALOGUE_RELPATH.as_posix()}", {})
-    doc = _yaml().safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        doc = _yaml().safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001 - any parse failure is one finding
+        # Same class as the roots file and the imprint manifest: present and
+        # unreadable is a contradiction, and it is graded here rather than
+        # thrown as a ParserError that escapes the phase ungraded.
+        return Check("G1.8-archetypes", q, "HALT", f"unparseable: {exc}",
+                     {"path": _CATALOGUE_RELPATH.as_posix()}, contradiction=True)
+    if not isinstance(doc, dict):
+        return Check("G1.8-archetypes", q, "HALT",
+                     "the archetype catalogue's root is not a mapping", {},
+                     contradiction=True)
     entries = doc.get("entries")
     if entries is None:
         return Check("G1.8-archetypes", q, "HALT",
@@ -448,6 +717,7 @@ def verify_provenance(
     record.checks.append(first)
     if doc is not None:
         record.checks.append(_check_status(doc))
+        record.checks.append(_check_root_policy(doc))
         record.checks.append(_check_pin(doc))
         try:
             record.checks.append(_check_representations(doc))
@@ -463,7 +733,7 @@ def verify_provenance(
             record.checks.append(Check("G1.6-imprint-hashes",
                                        "are the imprint bytes the claimed ones?",
                                        "HALT", exc.render(), {}))
-    record.checks.append(_check_imprint_signature(repo_root))
+    record.checks.append(_check_imprint_signature(repo_root, doc))
     record.checks.append(_check_archetypes(repo_root, operator_fingerprint))
 
     if allow_unsigned_dev:
@@ -627,6 +897,112 @@ def selftest() -> Tuple[bool, str]:
         missing, _doc2 = _check_roots_file(absent_root)
         expect("absent-roots-is-not-a-contradiction",
                missing.outcome == "HALT" and missing.contradiction is False)
+
+        # 14. root policy -- the cross-certification refusal, in code. Added
+        #     2026-09-06: the refusal previously existed only as a prose note
+        #     written into a G2 artifact, and a planted operator root passed
+        #     every check in this module.
+        legal = {"roots": [
+            {"id": "R", "role": "release_root", "issued_by": "self",
+             "signs": ["trust_roots_file"]},
+            {"id": "I", "role": "release_intermediate", "issued_by": "R",
+             "signs": ["imprint_manifest"]},
+        ]}
+        expect("legal-roots-pass", _check_root_policy(legal).outcome == "PASS")
+        planted = _check_root_policy({"roots": [
+            {"id": "R-OPERATOR", "role": "operator_root", "status": "active",
+             "issued_by": "R-INTENTOPS", "signs": ["imprint_manifest"]},
+        ]})
+        expect("operator-root-in-project-file-is-a-contradiction",
+               planted.outcome == "HALT" and planted.contradiction is True)
+        expect("undeclared-signs-value-halts",
+               _check_root_policy({"roots": [
+                   {"id": "R", "role": "release_root", "issued_by": "self",
+                    "signs": ["everything"]}]}).outcome == "HALT")
+        expect("duplicate-root-id-halts",
+               _check_root_policy({"roots": [
+                   {"id": "R", "role": "release_root", "issued_by": "self",
+                    "signs": []},
+                   {"id": "R", "role": "release_root", "issued_by": "self",
+                    "signs": []}]}).outcome == "HALT")
+
+        # 15. an unparseable manifest / catalogue HALTs as a contradiction
+        #     rather than raising a ParserError out of the phase ungraded.
+        (root / _MANIFEST_RELPATH).write_text("signatures: [\n  - {\n",
+                                              encoding="utf-8")
+        bad_manifest = _check_imprint_signature(root)
+        expect("unparseable-manifest-halts",
+               bad_manifest.outcome == "HALT"
+               and bad_manifest.contradiction is True)
+        (root / "genesis" / "imprint" / "archetypes").mkdir(parents=True,
+                                                            exist_ok=True)
+        (root / _CATALOGUE_RELPATH).write_text("entries: [\n  - {\n",
+                                               encoding="utf-8")
+        bad_catalogue = _check_archetypes(root, None)
+        expect("unparseable-catalogue-halts",
+               bad_catalogue.outcome == "HALT"
+               and bad_catalogue.contradiction is True)
+
+        # 16. signature verification -- the whole point of G1.7. Until
+        #     2026-09-06 a correctly-signed manifest and a forged one returned
+        #     the identical REFUSE, so PASS was unreachable on every clone.
+        if crypto_available():
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PrivateKey,
+            )
+
+            signing_key = Ed25519PrivateKey.generate()
+            signing_pem = signing_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode("ascii")
+            body = (f"{_GENERATED_BEGIN}\nartifacts:\n"
+                    f"  - path: 'x'\n    sha256: '{'a' * 64}'\n    bytes: 1\n"
+                    f"{_GENERATED_END}\n")
+            signed_doc = {"roots": [{
+                "id": "I", "role": "release_intermediate", "status": "active",
+                "key_id": "TESTKEY000000001", "public_key_pem": signing_pem,
+                "signs": ["imprint_manifest"],
+            }]}
+
+            def _write_manifest(sig_hex: str) -> None:
+                (root / _MANIFEST_RELPATH).write_text(
+                    "status: released\nsignatures:\n"
+                    f"  - key_id: TESTKEY000000001\n    signature: '{sig_hex}'\n"
+                    + body, encoding="utf-8")
+
+            _write_manifest("00")  # placeholder, rewritten once we can sign
+            payload = canonical_imprint_payload(
+                (root / _MANIFEST_RELPATH).read_text(encoding="utf-8"))
+            real_sig = signing_key.sign(payload).hex()
+
+            saved_state, saved_fp = trust_pin.PIN_STATE, trust_pin.ROOT_FINGERPRINT
+            try:
+                trust_pin.PIN_STATE = "minted"
+                trust_pin.ROOT_FINGERPRINT = "sha256:" + "b" * 64
+                _write_manifest(real_sig)
+                expect("valid-signature-passes",
+                       _check_imprint_signature(root, signed_doc).outcome == "PASS")
+                _write_manifest("0" * 128)
+                forged = _check_imprint_signature(root, signed_doc)
+                expect("forged-signature-is-a-contradiction",
+                       forged.outcome == "HALT" and forged.contradiction is True)
+                _write_manifest(real_sig)
+                unknown = _check_imprint_signature(root, {"roots": [{
+                    "id": "I", "role": "release_intermediate", "status": "active",
+                    "key_id": "OTHERKEY00000001", "public_key_pem": signing_pem,
+                    "signs": ["imprint_manifest"]}]})
+                expect("unknown-key-id-is-a-contradiction",
+                       unknown.outcome == "HALT" and unknown.contradiction is True)
+                expect("no-signing-root-refuses",
+                       _check_imprint_signature(root, {"roots": []}).outcome
+                       == "REFUSE")
+            finally:
+                trust_pin.PIN_STATE, trust_pin.ROOT_FINGERPRINT = (
+                    saved_state, saved_fp)
+            expect("signed-manifest-refuses-on-a-placeholder-pin",
+                   _check_imprint_signature(root, signed_doc).outcome == "REFUSE")
 
     report = (f"provenance selftest: {len(fired)} paths fired, "
               f"{len(failures)} failed"

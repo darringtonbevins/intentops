@@ -168,6 +168,8 @@ _JUSTIFIED_PATH_EXEMPTIONS = {
     # README status line carry the same copyright-holder name, same two ids, nothing else.
     "license": frozenset({"operator-given", "operator-family"}),
     "readme.md": frozenset({"operator-given", "operator-family"}),
+    # release evidence names the copyright holder beside the commit it timestamps
+    "release/v0.1.0-commit.txt": frozenset({"operator-given", "operator-family"}),
 }
 
 

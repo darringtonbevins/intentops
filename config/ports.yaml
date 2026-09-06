@@ -49,6 +49,14 @@ services:
     status: optional
     binding: "127.0.0.1"
 
+  cache:
+    port: 8006
+    env_var: INTENTOPS_CACHE_PORT
+    protocol: tcp
+    description: "ephemeral coordination -- work queues and short-lived cache, served by the genesis graph's Valkey. Deliberately volatile: nothing whose loss would lose an account of the node's conduct or its beliefs belongs here"
+    status: optional
+    binding: "127.0.0.1"
+
   local_inference:
     port: 8003
     env_var: INTENTOPS_LOCAL_INFERENCE_PORT

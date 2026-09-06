@@ -38,26 +38,37 @@ as_of: "2026-09-06"
 # a rule nobody can argue with, which is the failure mode this file exists to
 # retire.
 surface:
-  - glob: "packages/intentops-core/src/intentops_core/invariants/**"
-    reason: "the invariants themselves (GIDE / TAPCH+ / vocabulary) -- the floor everything else is checked against"
-
-  - glob: "packages/intentops-core/src/intentops_core/tiers/**"
-    reason: "the T0-T4 authorization ladder"
-
-  - glob: "packages/intentops-core/src/intentops_core/classify/**"
-    reason: "the reaches-reality classifier -- the discriminator that outranks the tier label itself"
-
-  - glob: "packages/intentops-core/src/intentops_core/gate/**"
+  # CORRECTED 2026-09-06 (wave-2 verifier). These seven globs named
+  # `packages/intentops-core/src/intentops_core/...`, a `src/` layout this
+  # repository does not use and never has -- so every one of them matched ZERO
+  # tracked files, and the surface they were written to protect was declared
+  # and unguarded. Only the LITERAL-PREFIX fallback in CoreSurface.match kept
+  # them from being wholly inert. `tests/test_core_surface_globs.py` now
+  # asserts that every declared glob matches at least one tracked file, so a
+  # surface entry cannot again point at nothing.
+  - glob: "packages/intentops-core/intentops_core/gate/**"
     reason: "the gate engine: decide(), the hook/gate chain, and every saddle's binding to it"
 
-  - glob: "packages/intentops-core/src/intentops_core/councils/**"
-    reason: "the Posture Council and the Moral Compass Council -- their own code, not their verdicts"
+  - glob: "packages/intentops-core/intentops_core/councils/**"
+    reason: "the Posture Council and the Moral Compass Council -- their own code, not their verdicts; the guardians and the tier ladder live here"
 
-  - glob: "packages/intentops-core/src/intentops_core/ordering/**"
+  - glob: "packages/intentops-core/intentops_core/validation/**"
+    reason: "the validation family (grounded-signal, witness, self-probe, still-true) -- the instruments that keep every other claim honest"
+
+  - glob: "packages/intentops-core/intentops_core/wisdom/**"
     reason: "the ordering store -- an ordering BINDS; changing how it binds is core"
 
-  - glob: "packages/intentops-core/src/intentops_core/validation/**"
-    reason: "the validation family (grounded-signal, witness, self-probe, still-true) -- the instruments that keep every other claim honest"
+  - glob: "packages/intentops-core/intentops_core/governance/**"
+    reason: "the values council itself: the core surface reader, the shell classifier, and the review ledger that clears a core change"
+
+  - glob: "packages/intentops-core/intentops_core/genesis/**"
+    reason: "provenance, the trust pin, and the genesis machine -- what a node proves before it mints what it is"
+
+  - glob: "packages/intentops-saddle-claudecode/intentops_saddle_claudecode/pre_tool.py"
+    reason: "the host's pre-tool binding -- the one place a tool call meets the gate on this saddle"
+
+  - glob: "packages/intentops-saddle-claudecode/intentops_saddle_claudecode/session_start.py"
+    reason: "the host's session-start binding -- where the imprint is re-hashed and drift is surfaced"
 
   - glob: "genesis/imprint/**"
     reason: "the signed birth bundle -- invariants, rules corpus, archetype catalogue, the imprint manifest itself"
@@ -71,11 +82,14 @@ surface:
   - glob: "config/trust-revocation.json"
     reason: "the signed revocation list -- rollback protection depends on this file's integrity"
 
+  # NODE-LOCAL by construction: a node's installed hook chain lives outside the
+  # clone and is never tracked here, so tests/test_core_surface_globs.py
+  # exempts this ONE glob BY NAME with this reason, rather than skipping any
+  # glob that happens to match nothing. An exemption that is a named row is
+  # reviewable; a filter that quietly drops empty globs is how the seven dead
+  # `src/` entries above survived a build and a release.
   - glob: ".intentops-hooks/**"
-    reason: "the hook chain a host saddle wires into its runtime (pre-tool, session-start, stop)"
-
-  - glob: "packages/intentops-saddle-*/src/**/gate_binding*"
-    reason: "the point where a host adapter binds S2 decide() -- a broken binding here is a gate that never fires"
+    reason: "the hook chain a host saddle wires into its runtime (pre-tool, session-start, stop) -- node-local, never tracked in this repo"
 
 # `signs` in config/trust-roots.yaml carries `core_mechanic_change` as one of
 # its closed vocabulary values precisely so a signed artifact can attest that

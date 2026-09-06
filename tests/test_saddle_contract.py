@@ -77,6 +77,17 @@ def _implementation_state(host: Dict[str, Any]) -> Tuple[bool, str]:
     pkg = _package_dir(host_id)
     if not host.get("package"):
         return False, f"{grade}: no package shell exists for this host"
+    # A row may DECLINE this driver, and the reason it gives is then the one
+    # reported. The driver below speaks one host's hook-payload shape; a saddle
+    # on a different transport is not "unimplemented", and reporting it that
+    # way is a wrong reason on a skipped row -- a blind spot wearing a green
+    # tick. The key must be present AND null to decline: an absent key keeps
+    # the old behaviour exactly.
+    if "contract_driver" in host and host.get("contract_driver") is None:
+        return False, str(
+            host.get("driver_note")
+            or f"{grade}: declines the hook-payload driver; exercised by its own suite"
+        )
     if not (pkg / _module_name(host_id) / "__init__.py").is_file():
         return False, "roadmap: no implementation"
     return True, ""

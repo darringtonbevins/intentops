@@ -70,13 +70,49 @@ def _problem_texts(estate_dir: Path, operator_root: str | None = OPERATOR_ROOT) 
 # --------------------------------------------------------------------------
 
 
+#: The ONE documented exception to the blank estate, named rather than
+#: expressed as a loosened assertion.
+#:
+#: The genesis service graph is a dependency OF THE FRAMEWORK: a node cannot
+#: instantiate the stores that are not files without a database running, so
+#: these three entries are the same on every clone and carry no estate
+#: identity of any kind. The OPERATOR's half of DEPENDENCIES.yaml still ships
+#: empty, and every other manifest ships wholly empty. It is the shape
+#: CAPABILITIES.yaml already had: the nine framework-declared kinds beside an
+#: empty capability list.
+FRAMEWORK_DEPENDENCY_IDS = {
+    "dep-genesis-postgres",
+    "dep-genesis-cache",
+    "dep-genesis-local-inference",
+}
+
+
 def test_shipped_estate_is_valid_and_empty() -> None:
     loaded = load_estate(SHIPPED_ESTATE, OPERATOR_ROOT)
     assert set(loaded.manifests) == set(MANIFEST_FILENAMES)
     for name in MANIFEST_FILENAMES:
+        if name == "DEPENDENCIES.yaml":
+            continue  # the one exception, asserted exactly in the next test
         assert loaded.entries(name) == (), f"{name} should ship empty"
     assert loaded.applied_grants == ()
     assert loaded.ignored_grants == ()
+
+
+def test_shipped_dependencies_carry_the_framework_graph_and_nothing_else() -> None:
+    """The exception is exact: these three, and no fourth.
+
+    A test that merely allowed "some entries" here would let an
+    estate-specific dependency in on the same reasoning, which is what the
+    blank estate exists to prevent.
+    """
+    loaded = load_estate(SHIPPED_ESTATE, OPERATOR_ROOT)
+    entries = loaded.entries("DEPENDENCIES.yaml")
+    assert {row["id"] for row in entries} == FRAMEWORK_DEPENDENCY_IDS
+    for row in entries:
+        assert row["kind"] == "service"
+        # probeable by construction, so an `unprobeable` refusal here would be
+        # one we did not have to make -- and a null probe would HALT anyway
+        assert row["health_probe"], row["id"]
 
 
 def test_shipped_capability_kinds_are_the_nine_with_reasons() -> None:

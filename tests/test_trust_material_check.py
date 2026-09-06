@@ -168,3 +168,18 @@ def test_the_repository_carries_no_trust_material() -> None:
 
 def test_the_selftest_passes() -> None:
     assert tmc.run_selftest() == 0
+
+
+def test_key_shape_is_left_anchored(tmp_path):
+    """'task-' / 'risk-' + 24 token chars are prose, not keys (false positives observed 2026-09-06)."""
+    import subprocess
+    import sys
+    (tmp_path / "prose.md").write_text(
+        "a task-abcdefghijklmnopqrstuvwxyz0123 and a risk-abcdefghijklmnopqrstuvwxyz0123 are words",
+        encoding="utf-8",
+    )
+    r = subprocess.run(
+        [sys.executable, "scripts/ops/trust_material_check.py", "--root", str(tmp_path)],
+        capture_output=True, text=True,
+    )
+    assert "VERDICT: CLEAN" in r.stdout, r.stdout[-400:]

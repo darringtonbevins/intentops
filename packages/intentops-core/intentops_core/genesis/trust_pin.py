@@ -13,10 +13,16 @@ PURPOSE
     project site, the signed git tag and the release announcement.
 
 WRITE MODEL
-    Not a store. This file is source, edited only by the release ceremony's
-    tooling in the same reviewed change that mints the key. A pin edited by
-    hand, on its own, is the shape of the attack the three carriers exist to
-    make visible.
+    Not a store. This file is source, edited by the operator as ONE reviewed
+    change alongside ``config/trust-roots.yaml`` and ``docs/GENESIS.md``,
+    immediately after the ceremony mints the key (``docs/TRUST-CEREMONY.md``
+    step 2). ``scripts/genesis/mint_release_root.py`` deliberately does NOT
+    write this file: a tool that can rewrite the pin unattended is the coup
+    the three carriers exist to make visible. A pin edited by hand ON ITS OWN,
+    without the other two carriers, is that same attack -- which is what G1.3
+    and G1.4 catch. (Corrected 2026-09-06: this docstring previously said the
+    pin is "edited only by the release ceremony's tooling", and no such
+    tooling existed anywhere in the tree.)
 
 BLIND SPOTS
     - A placeholder pin is not a weak pin, it is NO pin. Every function here

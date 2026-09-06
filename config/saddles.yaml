@@ -62,6 +62,33 @@ operations:
     without_it: "no stand-down -- the one-command, no-argument, no-cooperation-required stop this design treats as non-negotiable"
     host_dependency: required
 
+# PROPOSED operations -- NOT part of the five, and deliberately kept out of the
+# block above so the contract's own claim is not quietly widened. A saddle may
+# implement one of these; no saddle is graded on it, and a saddle that declines
+# one is not short of anything.
+proposed_operations:
+  - id: S6
+    name: discover
+    signature: "discover(declared) -> HostCapabilities"
+    proposed_by: "packages/intentops-saddle-mcp/"
+    contract: >-
+      Return a typed, enumerable DESCRIPTOR of the host -- context ceiling,
+      subagents, prefix cache and its TTL, parallel tool calls, whether the
+      host can refuse a call -- as booleans, bounded integers, and closed-enum
+      strings. DATA about the host, never an artifact FROM it: a skill file, a
+      prompt template, a tool definition, an agent card, or any executable
+      shape is REFUSED and named, never accepted and never executed. Consumed
+      by routing decisions and never by the gate, so a host cannot widen its
+      own permissions by lying here.
+    without_it: >-
+      nothing breaks -- the node simply cannot route on what its host offers,
+      which is the state every saddle was in before this was proposed
+    host_dependency: optional
+    fence: >-
+      The no-skill-marketplace rule expressed as a type boundary rather than a
+      policy. Assimilate the SHAPE, never the ARTIFACT: a node may learn that
+      its host has a skill; it may not learn the skill and run it.
+
 # Grades, closed vocabulary:
 #   reference  -- all five operations implemented and verified by a live run
 #                 of the contract test suite; this is what every other saddle
@@ -100,6 +127,60 @@ hosts:
     notes: >-
       This is the saddle every other row is graded against. New IntentOps
       capabilities are built and proven here first.
+
+  - id: mcp-hosted
+    name: "Hosted MCP server (any Model Context Protocol client)"
+    grade: candidate
+    package: "packages/intentops-saddle-mcp/"
+    module: intentops_saddle_mcp
+    # This saddle is not driven by the hook-chain contract driver: it speaks
+    # newline-delimited JSON-RPC on stdio, not a host hook payload. Declared
+    # null so the population reports the TRUE reason it was not exercised by
+    # that driver, rather than the conventional "no implementation" -- a
+    # skipped row with a wrong reason is a blind spot wearing a green tick.
+    contract_driver: null
+    driver_note: "speaks MCP stdio, not a hook payload; exercised by tests/test_saddle_mcp.py"
+    operations:
+      S1: implemented
+      S2: computed_not_enforced
+      S3: implemented
+      S4: declined
+      S5: implemented
+    extension_operations:
+      S6: implemented
+    # The allowlist this saddle enforces. EMPTY REFUSES EVERYTHING, by design,
+    # and there is deliberately no value meaning "all" -- if one existed
+    # somebody would reach for it mid-debugging and never take it back out,
+    # which is exactly how the upstream control it replaces came to be off for
+    # months with a comment where a reason should have been. An ABSENT key is a
+    # halt, not an empty list: an unfinished registry must not look like an
+    # armed control. Add a client name here in a reviewed change.
+    #
+    # A name here is AUTHORISATION, never IDENTIFICATION: it comes from the
+    # client's own `initialize` frame. The per-node bearer token is the
+    # authentication, and it is mandatory on every request.
+    allowed_clients: []
+    evidence: >-
+      [OBSERVED] S1/S3/S5 run the core's own code and are exercised by this
+      repository's tests. S2 is COMPUTED here and NOT ENFORCED: the server
+      returns a full Verdict for any proposed call and cannot refuse a call the
+      host never routes through it, so every answer carries
+      host_honoured=unknown and intentops.status returns the string
+      "S2: host-honoured=unknown". S4 is DECLINED, not unknown -- the protocol
+      offers a server no session-start hook into the client's context, so the
+      imprint cannot reach a fresh window from here. Two upstream controls that
+      shipped DISABLED are ON and have no off switch: per-node bearer-token
+      authentication (digest-only on disk, no anonymous fall-through) and this
+      default-deny client allowlist.
+    open_falsifier: >-
+      Whether any specific MCP client HONOURS a deny returned by this server has
+      not been run as a fenced, live test. Until one has, the grade stays
+      candidate, and a passing run would belong on THAT client's own row --
+      about that client -- never on this one as a claim about MCP in general.
+    notes: >-
+      The reference saddle rides inside one host's hook chain and is on the
+      critical path. This one sits beside any MCP-speaking host as a peer it
+      may or may not consult. That difference is the whole of the grade.
 
   - id: dsh
     name: "dsh (DeepSeek Harness)"

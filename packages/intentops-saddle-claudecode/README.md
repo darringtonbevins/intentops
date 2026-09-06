@@ -50,7 +50,18 @@ none), and prove the gate can actually refuse:
 python -m intentops_saddle_claudecode.pre_tool --selftest
 python -m intentops_saddle_claudecode.observe --selftest
 python -m intentops_saddle_claudecode.session_start --selftest
+python -m intentops_core.genesis.integrity --selftest
 ```
+
+The template's `SessionStart` block carries TWO hooks, in order: the imprint
+integrity re-hash (`intentops_core.genesis.integrity --session-start`) and then
+the boot corpus. The order is the point -- the corpus prints the node's rules
+into the window, and the re-hash answers whether those rules are still the ones
+the imprint manifest claims. Printed first, a window told its own rules drifted
+can act on that; printed afterwards, it has already read them. The re-hash is an
+AUDIT and not a gate: it exits non-zero and names the drifted files, and this
+host has no refusal channel at session start (see the blind spots below), so
+nothing there can stop a session and nothing here claims it can.
 
 **Do not skip that last step.** A hook that is wired but broken is
 indistinguishable from a hook that is wired and permissive: both let everything

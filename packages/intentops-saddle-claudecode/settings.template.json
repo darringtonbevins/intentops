@@ -9,14 +9,29 @@
     "keys; they are here because JSON has no comment syntax and a wiring file",
     "nobody can read is a wiring file nobody checks.",
     "",
-    "The four entries map one-to-one onto four of the five saddle operations:",
+    "The entries map onto four of the five saddle operations, plus one audit:",
     "  PreToolUse   -> S1 classify, S2 decide, S5 halt   (the only refusal site)",
     "  PostToolUse  -> S3 record",
     "  Stop         -> S3 record",
-    "  SessionStart -> S4 boot corpus",
+    "  SessionStart -> imprint integrity re-hash, THEN S4 boot corpus",
     "S2 is the one that cannot be satisfied by this file alone: it is a promise",
     "the HOST makes, that a refusal from the pre-tool hook actually stops the",
     "call. Removing the PreToolUse entry does not degrade the gate, it deletes it."
+  ],
+
+  "_SESSION_START_ORDER": [
+    "The integrity re-hash runs FIRST, before the boot corpus, and the order is",
+    "the point. The corpus hook prints the node's rules into the window; the",
+    "integrity hook answers whether those rules are still the ones the imprint",
+    "manifest claims. Printed first, the answer is in front of the window before",
+    "it reads a single refusal -- and a window told that its own rules drifted",
+    "can act on that, where a window told afterwards has already read them.",
+    "",
+    "It exits non-zero on drift. This host has no refusal channel at session",
+    "start (see the package README), so a named, loud banner naming the drifted",
+    "files is the strongest honest act available. It is an AUDIT, not a gate:",
+    "nothing here stops the session, and pretending otherwise would be the kind",
+    "of claim this project exists to refuse."
   ],
 
   "_INSTALL": [
@@ -77,6 +92,11 @@
     "SessionStart": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "python -m intentops_core.genesis.integrity --session-start",
+            "timeout": 30
+          },
           {
             "type": "command",
             "command": "python -m intentops_saddle_claudecode.session_start",

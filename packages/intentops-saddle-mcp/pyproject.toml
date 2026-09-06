@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intentops-saddle-mcp"
+version = "0.1.0"
+description = "The hosted IntentOps saddle: an MCP stdio server that offers the gate, the councils and the imprint check to any MCP client, with authentication and a client allowlist on by default."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "IntentOps contributors" },
+]
+
+# The dependency arrow points one way and only one way: a saddle depends on the
+# core, and the core never depends on a saddle. That direction is what lets a
+# second host be a second package instead of an edit to the gate, and it is
+# checked by a test rather than trusted -- see tests/test_dependency_direction.py.
+#
+# There is deliberately NO MCP SDK here. The protocol subset this server needs
+# is four methods of newline-delimited JSON-RPC over a pipe, which the standard
+# library does in a page. An SDK would be a third-party artifact loading into
+# the one process whose whole job is refusing third-party artifacts, and its
+# transitive closure would be a larger trusted base than the server itself.
+dependencies = [
+    "intentops",
+    "pyyaml",
+]
+
+[project.scripts]
+intentops-saddle-mcp = "intentops_saddle_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["intentops_saddle_mcp*"]

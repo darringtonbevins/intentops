@@ -45,6 +45,46 @@ halt, not an approval.
 Non-core changes (documentation, an isolated capability package, test coverage) follow
 ordinary pull-request review.
 
+### Install the pre-commit audit
+
+The values-council gate reads a tool CALL, so it cannot see a path assembled at
+runtime, an edit made in an editor outside the agent, or a `git apply` whose targets
+live inside the patch. All of those still reach the commit, which is what the audit
+below checks:
+
+```
+python scripts/hooks/pre-commit-core-surface.py --install
+```
+
+It refuses a commit that stages a path under `config/core-surface.yaml` with no
+matching row in `.intentops/core-review/ledger.jsonl`. The council sits below you, so
+the refusal names its own override:
+
+```
+python scripts/hooks/pre-commit-core-surface.py --override     --reason "why this core change goes in without a review"
+```
+
+A blank reason is refused. Run `--selftest` to prove the refusal and the acceptance
+both fire; run `--print-hook` if your repository already has a `pre-commit` hook and
+you want to add the line by hand. The audit cannot see `git commit --no-verify`; the
+session-start re-hash below is what catches what it misses.
+
+### The imprint is re-hashed at every session start
+
+`genesis/imprint/**` and the node's own `.intentops-rules/` copy are re-hashed against
+`IMPRINT-MANIFEST.yaml` at every session start, not only at birth
+(`python -m intentops_core.genesis.integrity --session-start`, wired in the reference
+saddle's `settings.template.json`; `intentops verify --imprint` is the same check on
+demand). Drift HALTS and names the drifted files. If you change a bundle file
+deliberately, rebuild the manifest:
+
+```
+python scripts/genesis/build_manifest.py --write
+```
+
+Rebuilding the manifest silences the instrument; it does not review the edit. The
+review is the section above.
+
 ## Test-first
 
 - New behaviour ships with a failing test first, then the change that makes it pass.

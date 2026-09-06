@@ -4,7 +4,7 @@
 # STATUS: every root below is `status: proposed`. G1 (the offline provenance
 # check run at every boot, see docs/GENESIS.md) HALTS on every root in this
 # file until the release root is minted in the operator's own ceremony
-# (trust-root-design.md sect. 7 -- a witnessed, offline, irreversible act that
+# (docs/TRUST-CEREMONY.md -- a witnessed, offline, irreversible act that
 # only the project's human operator may perform; it is never run from a loop
 # tick, a workflow leg, a subagent, or CI). Do not remove `status: proposed`
 # by hand: the ceremony tooling flips it, together with the real key material,
@@ -16,13 +16,14 @@
 # here has been signed by anything.
 #
 # WRITE MODEL: single-writer, ceremony-only. This file is edited by the root
-# minting ceremony (trust-root-design.md sect. 7) and by scheduled rotation
-# (sect. 8.1), never by routine code. No process may write it programmatically
+# minting ceremony (docs/TRUST-CEREMONY.md, tooling
+# scripts/genesis/mint_release_root.py) and by scheduled rotation
+# (TRUST-CEREMONY.md, Rotation), never by routine code. No process may write it programmatically
 # outside those two paths.
 #
-# Schema: trust-roots/v1. See docs/reference/trust-root-design.md (ported)
-# sect. 3.2 for the full field reference and sect. 3.3 for a longer worked
-# example. The authority-string one-liner format, for humans comparing two
+# Schema: trust-roots/v1. The runbook is docs/TRUST-CEREMONY.md; the closed
+# vocabularies below are enforced by G1.2b-root-policy in
+# intentops_core/genesis/provenance.py, not only declared here. The authority-string one-liner format, for humans comparing two
 # values by eye:
 #   intentops-root:v1:sha256:<64hex>:did:key:z<base58btc>
 
@@ -61,7 +62,7 @@ roots:
     ceremony:
       minted_at: null           # null until the ceremony runs -- never a placeholder date once real
       witnessed_by: null
-      record: "docs/reference/ceremonies/R-INTENTOPS-genesis.md"
+      record: null   # written at ceremony time under docs/ceremonies/; see docs/TRUST-CEREMONY.md
     evidence: "[PLACEHOLDER] no ceremony has occurred; this entry is a shape, not a key"
 
   - id: I-INTENTOPS-REL-2026
@@ -88,7 +89,7 @@ roots:
     ceremony:
       minted_at: null
       witnessed_by: null
-      record: "docs/reference/ceremonies/I-INTENTOPS-REL-2026.md"
+      record: null   # written at ceremony time under docs/ceremonies/; see docs/TRUST-CEREMONY.md
     evidence: "[PLACEHOLDER] signed alongside R-INTENTOPS in the same sitting, once that sitting occurs"
 
 # `signs` closed vocabulary (an undeclared value is a hard exit, never a

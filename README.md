@@ -50,7 +50,13 @@ outside this model entirely and never ships here.
   node with its own identity, its own trust material, and its own alignment record with
   its operator. See `docs/GENESIS.md`.
 - A blank estate: manifests with `entries: []`, describing a node that has nothing yet
-  rather than omitting the question.
+  rather than omitting the question. The one exception is named and exact — the three
+  services of the genesis graph are declared in `estate/DEPENDENCIES.yaml`, because they
+  are a dependency of the *framework*, not of anybody's estate.
+- The genesis substrate: a minimal service graph (`deploy/docker-compose.genesis.yml`,
+  permissively-licensed images only) and a declarative store schema for the stores that
+  are not files, so "instantiate every store empty and valid" is true at the SQL level
+  too. See `docs/SUBSTRATE.md`.
 - The imprint: the faculties and refusals every node is born with, and none of anyone's
   conclusions.
 
@@ -90,6 +96,7 @@ Full walkthrough, including what each step actually checks: `docs/quick-start.md
 | The genesis sequence (G0–G8, stand-down) | `docs/GENESIS.md` |
 | What an identity repo must contain | `docs/IDENTITY-REPO-CONTRACT.md` |
 | The runtime portability contract | `docs/SADDLE-CONTRACT.md` |
+| What runs underneath a node, and under which licence | `docs/SUBSTRATE.md` |
 | Licence | `LICENSE` (Apache-2.0) |
 | Contributing | `CONTRIBUTING.md` |
 | Security and disclosure | `SECURITY.md` |

@@ -111,6 +111,60 @@ def _emit(verdict: Verdict, *, out=None, err=None) -> int:
     return EXIT_OK
 
 
+def _apply_values_council(verdict: Verdict, event, context) -> Verdict:
+    """Run step 0 and fold its answer into the verdict. Never raises.
+
+    Three postures, and none of them is silence:
+
+      * the council permits -> the verdict is returned unchanged, with the
+        council's notes attached so the ledger records that step 0 ran;
+      * the council refuses and its mode BLOCKS -> the verdict is escalated to
+        BLOCK, carrying the council's own reasons;
+      * the council itself breaks -> the call is escalated to ASK with the
+        failure named. It is deliberately NOT a permit: an advisory member
+        that vanishes on error is how a step becomes decorative.
+
+    The council never RELAXES a verdict. A BLOCK stays a BLOCK whatever step 0
+    thinks, because the tier decision above is the floor and this is a second
+    opinion stacked on top of it, not a replacement for it.
+    """
+    if verdict.decision in (Decision.BLOCK, Decision.HALT):
+        return verdict
+    try:
+        from intentops_core.governance import gate_values_council
+    except Exception as exc:  # noqa: BLE001 - an absent council is a finding
+        return _escalate(verdict, "the values council could not be imported, so "
+                                  f"step 0 did not run: {type(exc).__name__}: {exc}")
+    try:
+        allowed, notes = gate_values_council(
+            event.tool_name, event.tool_input, node_root=context.root,
+            indicators=context.indicators,
+        )
+    except Exception as exc:  # noqa: BLE001 - same reason as decide()'s catch
+        return _escalate(verdict, "the values council raised while reading this "
+                                  f"call: {type(exc).__name__}: {exc}")
+    if allowed:
+        if notes:
+            verdict.metadata.setdefault("values_council", list(notes))
+        return verdict
+    return Verdict(
+        decision=Decision.BLOCK,
+        tier=verdict.tier,
+        reaches_reality=verdict.reaches_reality,
+        reasons=tuple(verdict.reasons) + tuple(notes or
+                      ("the values council refused this core-surface write",)),
+        metadata={**verdict.metadata, "values_council": list(notes)},
+    )
+
+
+def _escalate(verdict: Verdict, reason: str) -> Verdict:
+    """Raise a permit to ASK, naming why. A broken member is never a permit."""
+    return Verdict(decision=Decision.ASK, tier=verdict.tier,
+                   reaches_reality=verdict.reaches_reality,
+                   reasons=tuple(verdict.reasons) + (reason,),
+                   metadata=dict(verdict.metadata))
+
+
 def run(stdin_text: str, *, out=None, err=None) -> int:
     """The whole hook, as a function, so it can be exercised without a process."""
     try:
@@ -133,6 +187,14 @@ def run(stdin_text: str, *, out=None, err=None) -> int:
     except Exception as exc:  # noqa: BLE001
         return _emit(refusal_for_internal_error(f"{type(exc).__name__}: {exc}"),
                      out=out, err=err)
+
+    # Step 0 -- the values council, AFTER the tier decision and BEFORE the
+    # verdict is emitted. Wave-2 verifier finding: the council, its core
+    # surface, its shell classifier and its review ledger were all built and
+    # tested, and NO host hook ever called `gate_values_council`, so step 0 was
+    # unreachable in the one place it could act. A gate nothing invokes has
+    # never once fired, and is indistinguishable from a gate that cannot.
+    verdict = _apply_values_council(verdict, event, context)
 
     try:
         record(context.root, summary_of(verdict, event, context))

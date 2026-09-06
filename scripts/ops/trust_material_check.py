@@ -95,7 +95,7 @@ TOKEN_SHAPES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     ("slack-style token", re.compile(r"xox" + r"[abprs]-[A-Za-z0-9-]{10,}")),
     ("code-forge token", re.compile(r"gh" + r"[pousr]_[A-Za-z0-9]{20,}")),
     ("cloud access key id", re.compile(r"AKI" + r"A[0-9A-Z]{16}")),
-    ("model-api key", re.compile(r"sk-" + r"[A-Za-z0-9_-]{24,}")),
+    ("model-api key", re.compile(r"(?<![A-Za-z0-9_-])sk-" + r"[A-Za-z0-9_-]{24,}")),  # left-anchored 2026-09-06: unanchored, it fired from the 4th char of "task" and "risk"
 )
 
 #: Filename shapes that ARE a key or secret container, whatever they hold.

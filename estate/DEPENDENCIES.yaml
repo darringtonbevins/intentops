@@ -1,6 +1,19 @@
 # DEPENDENCIES -- what must be alive for a capability to work.
 #
-# GENESIS SHIPS THIS EMPTY. A MISSING file is a HALT (estate/README.md).
+# GENESIS SHIPS THE OPERATOR'S HALF OF THIS EMPTY. A MISSING file is a HALT
+# (estate/README.md).
+#
+# THREE ENTRIES ARE NOT EMPTY, AND THE REASON IS STATED RATHER THAN ASSUMED.
+# The framework's own genesis service graph (deploy/docker-compose.genesis.yml)
+# is a dependency of the framework, not of anybody's estate: a node cannot
+# instantiate the stores that are not files without a database running. Those
+# three entries are declared here at birth, carry no estate identity of any
+# kind -- generic images, registered loopback ports, no account, no host, no
+# credential -- and are the same on every clone. Everything the OPERATOR adds
+# still starts empty, and this is the same shape as CAPABILITIES.yaml, which
+# ships the nine framework-declared kinds beside an empty capability list.
+# Precedent for the shape, not an excuse for widening it: an entry that names
+# a particular deployment does not belong here.
 #
 # WRITE MODEL: single writer -- the operator, by hand or through an explicit
 # generator, one process at a time. The loader never writes this file.
@@ -54,4 +67,31 @@
 
 schema: estate-dependencies/v1
 as_of: "2026-09-06"
-entries: []
+entries:
+
+  # Every health_probe below is a REAL, runnable check and never null: these
+  # three are the one class of dependency that IS mechanically probeable, so
+  # `unprobeable` here would be a refusal we did not have to make.
+  - id: "dep-genesis-postgres"
+    kind: service
+    depends_on: []
+    health_probe: "pg_isready against the registered vector_store port on 127.0.0.1 exits 0, AND `SELECT count(*) FROM schema_migrations` returns at least one row -- a server that is up with no schema applied is a different finding from a server that is down, and both are failures"
+    criticality: required
+    fallback: "none. The stores that are not files have nowhere to live, so genesis HALTs at G3 and says which service is absent; it never proceeds with a subset of its organs and calls that born"
+    as_of: "2026-09-06"
+
+  - id: "dep-genesis-cache"
+    kind: service
+    depends_on: []
+    health_probe: "valkey-cli PING against the registered cache port on 127.0.0.1 answers PONG"
+    criticality: degraded-ok
+    fallback: "the node runs single-process: loop coordination and short-lived cache fall back to in-process state, and the come-online report SAYS the node is degraded rather than reporting a smaller healthy graph"
+    as_of: "2026-09-06"
+
+  - id: "dep-genesis-local-inference"
+    kind: service
+    depends_on: []
+    health_probe: "GET /api/tags on the registered local_inference port on 127.0.0.1 returns 200 -- and the model list is read, because a server answering with no model loaded cannot serve a generation and should not read as healthy"
+    criticality: optional
+    fallback: "the node uses whatever remote provider its operator has configured; with none, it states plainly that it has no generation rung rather than degrading silently to a default"
+    as_of: "2026-09-06"

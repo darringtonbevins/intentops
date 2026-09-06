@@ -1,10 +1,16 @@
-"""The ``intentops`` command line -- the whole node surface, six verbs.
+"""The ``intentops`` command line -- the whole node surface.
 
 PURPOSE
     ``genesis`` brings a clone up as a node. ``doctor`` asks the six birth
     questions again at any time. ``stand-down`` switches it off. ``verify``
     re-runs provenance. ``gate --selftest`` proves the gate can actually
-    refuse. ``interview`` prints the staged alignment plan.
+    refuse. ``interview`` prints the staged alignment plan. ``substrate init``
+    renders the service graph and the store schema a node runs on, without
+    connecting to either.
+
+    The verbs are deliberately not counted in this line. A count in a
+    docstring is a claim nothing checks, and it goes stale on the next verb --
+    this line has already said "six" and "seven" while the truth moved.
 
     Two properties are deliberate. First, every command prints the
     unverified-provenance banner while the development flag is open -- not
@@ -37,6 +43,7 @@ from typing import List, Optional
 from .genesis import UNSIGNED_DEV_ENV
 from .genesis import GenesisError
 from .genesis import aliveness as aliveness_mod
+from .genesis import integrity as integrity_mod
 from .genesis import machine as machine_mod
 from .genesis import organs as organs_mod
 from .genesis import provenance as provenance_mod
@@ -102,12 +109,82 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--json", action="store_true")
     v.add_argument("--selftest", action="store_true",
                    help="prove every genesis instrument can fire")
+    v.add_argument("--imprint", action="store_true",
+                   help="re-hash the birth bundle and this node's rules copy "
+                        "against IMPRINT-MANIFEST.yaml, and name any drift")
+    v.add_argument("--node-root", type=Path, default=None,
+                   help="the node whose rules copy is checked (--imprint only)")
 
     gate = sub.add_parser("gate", help="the action gate")
     gate.add_argument("--selftest", action="store_true",
                       help="prove the gate can refuse and can allow")
 
-    sub.add_parser("interview", help="print the staged alignment plan")
+    iv = sub.add_parser("interview", help="print the staged alignment plan")
+    iv.add_argument("--dry-run", action="store_true",
+                    help="walk the open sittings (S0-S2) with PLACEHOLDER "
+                         "answers, writing nothing, and print the honest "
+                         "calibration status")
+    iv.add_argument("--identity-repo", default=None,
+                    help="read this node's calibration state from a bound "
+                         "identity repository (never written by this verb)")
+    iv.add_argument("--seed", type=int, default=0,
+                    help="seed for the replay shuffler; a shuffle nobody can "
+                         "reproduce cannot be audited")
+
+    cal = sub.add_parser("calibration",
+                         help="the two-bar delegation gate: the council floor "
+                              "AND the twin bar")
+    cal_sub = cal.add_subparsers(dest="calibration_command")
+    cal_status = cal_sub.add_parser(
+        "status", help="print the honest status; it never claims alignment")
+    cal_status.add_argument("--identity-repo", default=None,
+                            help="the bound identity repository holding the "
+                                 "calibration journal")
+    cal_status.add_argument("--selftest", action="store_true",
+                            help="prove every refusal in the scorer can fire")
+
+    # Additive-elsewhere: every loop verb, flag and behaviour lives in
+    # intentops_core.loops.cli. This file gains a registration and a dispatch
+    # row, so a defect in the loop surface cannot strand the node CLI.
+    from .loops.cli import add_parser as _add_loops_parser
+
+    _add_loops_parser(sub)
+
+    r = sub.add_parser("route",
+                       help="resolve a routing assignment (shape + estate ring)")
+    r.add_argument("--shape", default=None,
+                   help="task shape, as declared in config/routing-policy.yaml")
+    r.add_argument("--ring", default=None,
+                   help="estate ring; there is no default, and an undeclared "
+                        "ring HALTs rather than resolving permissively")
+    r.add_argument("--policy", default=None,
+                   help="path to a routing policy (default: the clone's own)")
+    r.add_argument("--example", action="store_true",
+                   help="load the policy's fictional example pools and fence")
+    r.add_argument("--json", action="store_true")
+    r.add_argument("--selftest", action="store_true",
+                   help="prove every verdict and every halt can fire")
+
+    sb = sub.add_parser("substrate",
+                        help="the service graph and store schema a node runs on")
+    sb_sub = sb.add_subparsers(dest="substrate_command")
+    sb_init = sb_sub.add_parser(
+        "init",
+        help="render the store schema and the service plan (connects to nothing)")
+    sb_init.add_argument(
+        "--dry-run", action="store_true",
+        help="render the plan and the SQL and stop. This is the ONLY mode this "
+             "seed implements: it ships no database driver, so applying the "
+             "schema is `psql -f deploy/schema/genesis.sql` -- named, never "
+             "simulated")
+    sb_init.add_argument("--json", action="store_true")
+    sb_init.add_argument("--sql", action="store_true",
+                         help="print the rendered SQL instead of the plan")
+    sb_init.add_argument("--check", action="store_true",
+                         help="fail if deploy/schema/genesis.sql has drifted "
+                              "from its declaration in schema.py")
+    sb_init.add_argument("--selftest", action="store_true",
+                         help="prove the schema and graph checks can fire")
     return parser
 
 
@@ -194,7 +271,32 @@ def _cmd_stand_down(args: argparse.Namespace) -> int:
     return 0
 
 
+def _integrity_selftest() -> tuple:
+    """Adapt the integrity selftest to the (ok, report) shape verify expects."""
+    code = integrity_mod.selftest()
+    return code == 0, "integrity: every drift class can fire"
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
+    if getattr(args, "imprint", False):
+        repo = _repo_root(args)
+        try:
+            report = integrity_mod.verify_imprint(repo, args.node_root)
+        except integrity_mod.IntegrityError as exc:
+            if args.json:
+                print(json.dumps({"verdict": integrity_mod.HALT,
+                                  "error": str(exc)}, indent=2))
+            else:
+                print(f"IMPRINT INTEGRITY {integrity_mod.HALT} -- the check "
+                      f"could not run: {exc}")
+                print("  This is not a pass.")
+            return 1
+        if args.json:
+            print(json.dumps(report.to_row(), indent=2))
+        else:
+            print(report.render())
+        return 0 if report.clean else 1
+
     if args.selftest:
         failures = 0
         for name, fn in (("trust_pin", None),
@@ -202,6 +304,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                          ("organs", organs_mod.selftest),
                          ("standdown", standdown_mod.selftest),
                          ("aliveness", aliveness_mod.selftest),
+                         ("integrity", _integrity_selftest),
                          ("machine", machine_mod.selftest)):
             if fn is None:
                 # Named rather than omitted: a module with no selftest is a
@@ -271,9 +374,106 @@ def _cmd_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _calibration_state(identity_repo: Optional[str]):
+    """This node's folded calibration state. No repo bound = an EMPTY state.
+
+    An empty state is not a missing one: it says zero graded rulings, which is
+    the honest reading for a node that has journalled none.
+    """
+    from .alignment import calibration as calibration_mod
+
+    if not identity_repo:
+        return calibration_mod.CalibrationState(graded=0, hits=0, accuracy=0.0,
+                                                sealed=0)
+    return calibration_mod.CalibrationStore(identity_repo).state()
+
+
+def _interview_dry_run(args: argparse.Namespace, repo: Path,
+                       template: Path) -> int:
+    """Walk the OPEN sittings with placeholder answers. Writes nothing."""
+    import random
+
+    from .alignment import calibration as calibration_mod
+    from .alignment import interview as interview_mod
+
+    interview = interview_mod.load_interview(template)   # refusals fire here
+    rulings = 0            # a dry run asserts no history; S3/S4 stay shut
+    plan = interview_mod.stage_plan(rulings)
+    rng = random.Random(args.seed)
+
+    print("Alignment interview -- DRY RUN")
+    print("Nothing below is written. Every answer is a PLACEHOLDER, and a "
+          "placeholder is not an operator's answer.")
+    print(f"Assumed rulings in this node's own history: {rulings} "
+          "(a dry run reads no queue)")
+    print()
+    for stage in plan:
+        if not stage.available:
+            print(f"  {stage.id}  CLOSED -- {stage.requires}")
+            continue
+        questions = interview.for_sitting(stage.id)
+        print(f"  {stage.id}  OPEN   -- grade {stage.grade}, "
+              f"{len(questions)} question(s)")
+        for question in questions:
+            rendered = interview_mod.render_question(question, rng)
+            first_line = question.prompt.splitlines()[0] if question.prompt else ""
+            print(f"      {question.id} [{question.kind}/{question.tier}]"
+                  f" {first_line}")
+            for index, option in enumerate(rendered.options):
+                print(f"        ({index}) {option}")
+            print("        PLACEHOLDER ANSWER -- not recorded, not graded")
+        print()
+
+    state = _calibration_state(getattr(args, "identity_repo", None))
+    floors = calibration_mod.default_floors()
+    council_floor = calibration_mod.load_council_floor(repo)
+    # A dry run takes no council reading, and an absent reading is never a
+    # pass -- so the gate below reports the council half as NOT met, honestly.
+    result = calibration_mod.two_bar_gate(state, floors, council=None,
+                                          council_floor=council_floor)
+    print(result.status)
+    for reason in result.reasons:
+        print(f"  {reason}")
+    return 0
+
+
+def _cmd_calibration(args: argparse.Namespace) -> int:
+    from .alignment import calibration as calibration_mod
+
+    if getattr(args, "calibration_command", None) != "status":
+        print("usage: intentops calibration status [--identity-repo PATH] "
+              "[--selftest]", file=sys.stderr)
+        return 2
+    if getattr(args, "selftest", False):
+        ok, message = calibration_mod.selftest(_repo_root(args))
+        print(message)
+        return 0 if ok else 1
+
+    repo = _repo_root(args)
+    floors = calibration_mod.default_floors()
+    council_floor = calibration_mod.load_council_floor(repo,
+                                                       floors.council_level)
+    state = _calibration_state(getattr(args, "identity_repo", None))
+    result = calibration_mod.two_bar_gate(state, floors, council=None,
+                                          council_floor=council_floor)
+    print("The delegation bar is BOTH gates; either alone is insufficient.")
+    print(f"  council floor : {council_floor.level} = "
+          f"{council_floor.sigma:g} sigma  (source {council_floor.source})")
+    print(f"  twin bar      : {floors.minimum_rulings} rulings at "
+          f"{round(floors.minimum_accuracy * 100)}%, forward-only")
+    print(f"  sealed        : {state.sealed} prediction(s)")
+    print()
+    print(result.status)
+    for reason in result.reasons:
+        print(f"  {reason}")
+    return 0
+
+
 def _cmd_interview(args: argparse.Namespace) -> int:
     repo = _repo_root(args)
     template = repo / "config" / "alignment-interview.template.yaml"
+    if getattr(args, "dry_run", False):
+        return _interview_dry_run(args, repo, template)
     print("Alignment interview -- STAGED PLAN (this verb prints; it does not ask)")
     print()
     print("At genesis there are NO replays. A fresh operator has ruled nothing,")
@@ -313,6 +513,117 @@ def _cmd_interview(args: argparse.Namespace) -> int:
     return 0 if template.exists() else 1
 
 
+def _cmd_route(args: argparse.Namespace) -> int:
+    """Resolve one assignment. Pure: no socket, no provider SDK, no model id."""
+    from .routing import policy as routing_policy
+
+    policy_path = Path(args.policy) if args.policy else (
+        _repo_root(args) / "config" / "routing-policy.yaml")
+    if args.selftest:
+        ok, report = routing_policy.selftest(policy_path)
+        print(report)
+        return 0 if ok else 1
+    if not args.shape or not args.ring:
+        print("route: --shape and --ring are both required (or --selftest). "
+              "There is no default shape and no default ring.", file=sys.stderr)
+        return 2
+    try:
+        pol = routing_policy.load_policy(policy_path, use_example=args.example)
+        assignment = routing_policy.resolve(pol, args.shape, args.ring)
+    except routing_policy.PolicyError as exc:
+        print(f"HALT: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(assignment.to_dict(), indent=2, sort_keys=True))
+    else:
+        print(routing_policy.render(assignment, pol))
+    # A fenced or unmet assignment is an ANSWER, not a crash: exit 0 and let
+    # the reader see the verdict, the same way a stood-down node exits 0.
+    return 0
+
+
+def _cmd_substrate(args: argparse.Namespace) -> int:
+    """Render what a node runs on. Opens no socket, starts no container.
+
+    ``--dry-run`` is the only implemented mode, and saying so is the point:
+    this seed carries no database driver, so a verb that claimed to APPLY the
+    schema would be claiming something it cannot verify. It prints the exact
+    command instead.
+    """
+    from .substrate import schema as schema_mod
+    from .substrate import service_graph as graph_mod
+
+    repo = _repo_root(args)
+    if getattr(args, "substrate_command", None) != "init":
+        print("substrate: the only verb is `init` (try: substrate init --dry-run)",
+              file=sys.stderr)
+        return 2
+
+    if args.selftest:
+        ok_schema, report_schema = schema_mod.selftest()
+        ok_graph, report_graph = graph_mod.selftest(repo)
+        print(report_schema)
+        print(report_graph)
+        return 0 if (ok_schema and ok_graph) else 1
+
+    if args.check:
+        ok, report = schema_mod.check_rendered(repo)
+        print(report)
+        return 0 if ok else 1
+
+    if args.sql:
+        print(schema_mod.render_sql(), end="")
+        return 0
+
+    try:
+        graph_ok, _findings, summary = graph_mod.check_graph(repo)
+        plan = graph_mod.render_plan(repo)
+    except graph_mod.GraphError as exc:
+        print(f"HALT: {exc}", file=sys.stderr)
+        return 1
+    rendered_ok, rendered_report = schema_mod.check_rendered(repo)
+
+    if args.json:
+        print(json.dumps({
+            "graph": summary,
+            "graph_clean": graph_ok,
+            "schema_version": schema_mod.SCHEMA_VERSION,
+            "tables": [{"name": t.name, "write_model": t.write_model,
+                        "expected_writer": t.expected_writer,
+                        "consumer": t.consumer}
+                       for t in schema_mod.TABLES],
+            "rendered_sql_matches_declaration": rendered_ok,
+            "applied": False,
+            "apply_command": "psql -f deploy/schema/genesis.sql",
+        }, indent=2, sort_keys=True))
+    else:
+        print(plan)
+        print()
+        print(f"STORE SCHEMA (version {schema_mod.SCHEMA_VERSION}, "
+              f"{len(schema_mod.TABLES)} tables, RENDERED, NOT APPLIED)")
+        for table in schema_mod.TABLES:
+            print(f"  {table.name:<24} {table.write_model}")
+        print()
+        print(f"  {rendered_report}")
+        print("  apply with: psql -f deploy/schema/genesis.sql")
+        print("  this seed ships no database driver on purpose; naming the "
+              "command beats")
+        print("  simulating an apply nothing here could verify.")
+
+    if not args.dry_run:
+        print("\nsubstrate init: --dry-run is the only implemented mode; "
+              "nothing was applied.", file=sys.stderr)
+        return 2
+    return 0 if (graph_ok and rendered_ok) else 1
+
+
+def _cmd_loops(args: argparse.Namespace) -> int:
+    """Delegate to the loop surface. All behaviour lives in its own module."""
+    from .loops.cli import run as run_loops
+
+    return run_loops(args, Path(args.node_root))
+
+
 _COMMANDS = {
     "genesis": _cmd_genesis,
     "doctor": _cmd_doctor,
@@ -320,6 +631,10 @@ _COMMANDS = {
     "verify": _cmd_verify,
     "gate": _cmd_gate,
     "interview": _cmd_interview,
+    "calibration": _cmd_calibration,
+    "route": _cmd_route,
+    "substrate": _cmd_substrate,
+    "loops": _cmd_loops,
 }
 
 
