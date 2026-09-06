@@ -33,6 +33,8 @@ BLIND SPOTS
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -60,9 +62,54 @@ gate = _load_gate()
 PLANTED = "qzjvbxmrkw"
 ADDRESS = "someone" + "@" + "nowhere.test"
 
+#: A SECOND invented token, distinct from PLANTED, used only to prove the
+#: message-shape exemption is scoped to its OWN declared token ids -- never
+#: to every fenced thing that happens to sit on a matching line.
+OTHER_PLANTED = "vqfnzhtklb"
+
+#: A minimal, otherwise-valid fence document -- every load-bearing block
+#: `load_fence` requires, with one substitutable slot for the block under
+#: test. Used only to prove a bad `history_allowed_message_shapes` entry
+#: halts loading; never exercised against a real corpus.
+_MINIMAL_FENCE_YAML = """\
+schema: exposure-fence/v1
+as_of: "2026-09-06"
+tokens:
+  - id: t1
+    sha256: "{zero_digest}"
+    length: 6
+    match: word
+patterns:
+  - id: p1
+    regex: "x"
+    catches: "x"
+    trades: "x"
+allowed_email_domains: []
+allowed_line_markers:
+  - "exposure-gate: allow"    # declaring the marker here, not exempting a real hit
+allowed_paths: []
+allowed_path_tokens: {{}}
+skip_dirs: []
+skip_extensions: []
+max_file_bytes: 4000000
+history_allowed_identities:
+  identities: []
+  allowed_email_domains: []
+{message_shapes}
+"""
+
 
 def _fence():
     return gate._synthetic_fence(PLANTED)
+
+
+def _fence_with_extra_token():
+    """The standard synthetic fence, plus a second token the copyright-line
+    shape does NOT declare as exempt."""
+    fence = _fence()
+    extra_digest = hashlib.sha256(OTHER_PLANTED.encode("ascii")).hexdigest()
+    extra = gate.TokenRule("other-planted", extra_digest, len(OTHER_PLANTED), "word")
+    return dataclasses.replace(fence, tokens=fence.tokens + (extra,))
 
 
 def _log(*records):
@@ -180,6 +227,129 @@ def test_the_exemption_counts_are_reported_never_silently():
     assert "history allowlist:" in rendered
     assert "2 identity checks" in rendered
     assert "2 matched an allowlisted identity" in rendered
+
+
+# ---------------------------------------------------------------------------
+# the history message-shape allowlist -- a copyright line quoting the
+# repository's own LICENSE is not a leak, but the exemption is scoped to
+# exactly the tokens the shape declares, and only on the line that matches --
+# never to every fenced thing that happens to sit on that line, and never to
+# the same tokens elsewhere in the message.
+# ---------------------------------------------------------------------------
+
+
+def test_a_copyright_line_carrying_the_declared_tokens_produces_no_finding():
+    result, commits = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "A Person", "safe@example.com",
+                       "A Person", "safe@example.com", "release",
+                       f"Copyright 2026 {PLANTED} Person")))
+    assert commits == 1
+    assert result.clean, (
+        "a copyright-shaped line carrying the shape's declared tokens must "
+        "be exempted, not a finding"
+    )
+    assert result.message_lines_exempted == 1
+
+
+def test_the_same_tokens_on_a_non_copyright_body_line_are_still_a_finding():
+    result, _ = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "A Person", "safe@example.com",
+                       "A Person", "safe@example.com", "release",
+                       f"see {PLANTED} for the maintainer")))
+    assert any(f.rule_id in ("planted-word", "planted-substring")
+               for f in result.findings), (
+        "the shape's tokens are exempt only on a line that matches the "
+        "shape -- the same tokens elsewhere in the message are unaffected"
+    )
+    assert result.message_lines_exempted == 0
+
+
+def test_a_copyright_line_carrying_a_different_fenced_token_is_still_a_finding():
+    """The exemption is scoped to the SHAPE's declared token ids, never to
+    every fenced thing that happens to sit on a matching line."""
+    fence = _fence_with_extra_token()
+    result, _ = gate.scan_history(
+        REPO_ROOT, fence,
+        log_text=_log(("a1b2c3d4e5f6", "A Person", "safe@example.com",
+                       "A Person", "safe@example.com", "release",
+                       f"Copyright 2026 {OTHER_PLANTED}")))
+    assert any(f.rule_id == "other-planted" for f in result.findings), (
+        "a copyright-shaped line still reports a fenced token the shape "
+        "does not declare as exempt"
+    )
+    assert result.message_lines_exempted == 1, (
+        "the line still matched the copyright shape and incremented the "
+        "counter; only its declared tokens were cleared"
+    )
+
+
+def test_a_midsentence_lowercase_copyright_mention_clears_while_an_estate_token_on_the_line_still_finds():
+    """The real live finding this shape was widened for: commit 23e20a2
+    carries its copyright notice mid-sentence, lowercase, preceded by other
+    prose on the same line -- not on a line of its own. The shape must clear
+    its own declared tokens there, while a wholly different fenced token
+    sharing that same line is still a hard finding."""
+    fence = _fence_with_extra_token()
+    result, _ = gate.scan_history(
+        REPO_ROOT, fence,
+        log_text=_log(("a1b2c3d4e5f6", "A Person", "safe@example.com",
+                       "A Person", "safe@example.com", "release",
+                       f"Apache License 2.0, copyright 2026 {PLANTED} Person, "
+                       f"also touches the {OTHER_PLANTED} estate")))
+    assert not any(f.rule_id in ("planted-word", "planted-substring")
+                   for f in result.findings), (
+        "a mid-sentence, lowercase copyright mention must still be "
+        "recognised as the shape and clear its declared tokens"
+    )
+    assert any(f.rule_id == "other-planted" for f in result.findings), (
+        "a different fenced token on the same copyright-shaped line is "
+        "still a finding -- the exemption never extends past its own "
+        "declared tokens"
+    )
+    assert result.message_lines_exempted == 1
+
+
+def test_a_message_shape_with_an_unparseable_pattern_halts_load_fence(tmp_path):
+    bad = tmp_path / "fence.yaml"
+    bad.write_text(
+        _MINIMAL_FENCE_YAML.format(
+            zero_digest="0" * 64,
+            message_shapes=(
+                "history_allowed_message_shapes:\n"
+                "  - id: broken\n"
+                "    pattern: '('\n"
+                "    exempt_token_ids: [t1]\n"
+            ),
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(gate.FenceError):
+        gate.load_fence(bad)
+
+
+def test_a_message_shape_with_a_valid_pattern_loads_cleanly(tmp_path):
+    """The negative case above is only meaningful beside a positive one --
+    proving the minimal document loads when the pattern DOES compile."""
+    good = tmp_path / "fence.yaml"
+    pattern_line = (
+        "    pattern: '^" + r"\s*Copyright " + r"\d{4}" + r"\b" + "'\n"
+    )
+    good.write_text(
+        _MINIMAL_FENCE_YAML.format(
+            zero_digest="0" * 64,
+            message_shapes=(
+                "history_allowed_message_shapes:\n"
+                "  - id: fine\n"
+                + pattern_line
+                + "    exempt_token_ids: [t1]\n"
+            ),
+        ),
+        encoding="utf-8",
+    )
+    fence = gate.load_fence(good)
+    assert [s.id for s in fence.history_allowed_message_shapes] == ["fine"]
 
 
 # ---------------------------------------------------------------------------

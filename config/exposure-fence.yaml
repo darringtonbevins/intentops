@@ -71,6 +71,15 @@
 #     copyright holder. Every other path in this file still carries an empty
 #     list, every other declared token is still checked in these two files,
 #     and every shape pattern is still checked everywhere, no exceptions.
+#   * Added 2026-09-06: `--history` also exempts `history_allowed_message_shapes`
+#     (below) -- the shape is the word "copyright" followed by a year, anywhere
+#     on a line, case-insensitive; the exemption never extends to other tokens
+#     on that line. It clears exactly the two owner-name tokens
+#     (operator-given, operator-family) on a copyright-shaped subject/body
+#     line, and only there -- a different fenced token on the same line, or
+#     the same tokens on a different line, is still a finding. The live run
+#     against this repository's own history matched the shape on 1 line
+#     (`message_lines_exempted: 1`, printed every run in the history report).
 
 schema: exposure-fence/v1
 as_of: "2026-09-06"
@@ -340,6 +349,48 @@ history_allowed_identities:
   allowed_email_domains:
     - users.noreply.github.com  # class: GitHub noreply address, any username
     - anthropic.com             # class: co-author noreply address
+
+# History-scope MESSAGE-SHAPE allowlist. Distinct from the identity allowlist
+# above: this exempts declared tokens on a commit message LINE that matches a
+# stated SHAPE, never on an identity line and never on the rest of the
+# message. `scan_history` checks every subject/body line against these
+# patterns separately; a line that matches has ONLY that entry's
+# `exempt_token_ids` cleared, and every other line in the same commit --
+# including a different line carrying the same tokens -- is still checked in
+# full.
+#
+# WHY THIS EXISTS: a release commit's message can legitimately quote the
+# repository's own LICENSE text, which states its copyright holder by name.
+# That name is on the denylist (operator-given, operator-family) because it
+# is also the private estate's operator identity, and the identity allowlist
+# above cannot help here -- a copyright line is not an author or committer
+# line, it is prose inside the message body. Without this block, a public
+# release commit that quotes its own LICENSE reads red for a reason nobody
+# has to fix.
+#
+# Added 2026-09-06: exactly one entry. First shipped anchored to the start of
+# the line (`^\s*Copyright...`) on the assumption the copyright mention would
+# be a line of its own, the way it reads in LICENSE text. It was not: the
+# actual release commit (23e20a2) carries it mid-sentence -- "...Apache
+# License 2.0, copyright 2026 <name>, ruled 2026-09-06)..." -- lowercase,
+# preceded by other text on the same line. The anchored, case-sensitive
+# pattern correctly did not match that, and the live history scan stayed
+# EXPOSED. Corrected the same day: the shape is now the word "copyright"
+# followed by a year, ANYWHERE on a line, CASE-INSENSITIVE
+# (`(?i)\bcopyright (\(c\) )?\d{4}\b`, matched with `search()`, not
+# `match()`), which also still covers a standalone LICENSE-style line without
+# needing a second entry. Exempts only operator-given and operator-family.
+# Every other declared token, and every shape pattern, is still checked on
+# that same line and on every other line in the commit; the exemption never
+# extends to any OTHER fenced token on a copyright-shaped line -- it is a
+# hard finding there just as anywhere else. `message_lines_exempted` in the
+# report states exactly how many lines this cleared, in every run, whether or
+# not it changed the verdict -- the same discipline as the identity-check
+# counters above.
+history_allowed_message_shapes:
+  - id: copyright-line
+    pattern: '(?i)\bcopyright (\(c\) )?\d{4}\b'
+    exempt_token_ids: [operator-given, operator-family]
 
 # A line carrying one of these markers is exempt. The marker is a TAG, not an
 # excuse: it must be followed by a reason on the same line, and the gate

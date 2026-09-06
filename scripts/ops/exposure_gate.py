@@ -57,6 +57,16 @@ manufactures confidence over a population it never saw
       subject or body is still a finding. Every run prints how many identity
       checks it made and how many it exempted, so a widened allowlist is
       visible in the report rather than only in the config diff.
+    * ``--history`` also exempts declared MESSAGE-SHAPE lines under
+      ``history_allowed_message_shapes`` -- currently one entry: the word
+      "copyright" followed by a year, anywhere on a line, case-insensitive
+      (a real release commit carried it mid-sentence, not on a line of its
+      own). This exempts the two owner-name tokens (operator-given,
+      operator-family) ONLY on a subject/body line matching that shape; the
+      exemption never extends to any OTHER fenced token on that same line,
+      and the same owner tokens on a different line are still a finding.
+      Reported as ``message_lines_exempted`` in every run, whether or not it
+      changed the verdict -- same discipline as the identity counters above.
 
 EXIT CODES
     0  clean -- no hit outside an allowed path or an explained marker
@@ -79,7 +89,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
@@ -143,6 +153,24 @@ class PatternRule:
 
 
 @dataclass(frozen=True)
+class MessageShapeRule:
+    """HISTORY-SCOPE ONLY. A commit message LINE shape, not an identity.
+
+    When a subject/body line matches ``regex`` ANYWHERE in the line (via
+    ``search()``, not ``match()`` -- a real copyright mention showed up
+    mid-sentence in a prose commit message, not on a line of its own), that
+    ONE line is scanned with ``exempt_token_ids`` cleared -- never the
+    identity line, never the rest of the message, and never any OTHER fenced
+    token on the same line. See the config's ``history_allowed_message_shapes``
+    header for why this is a separate mechanism from the identity allowlist.
+    """
+
+    id: str
+    regex: "re.Pattern[str]"
+    exempt_token_ids: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Fence:
     """The loaded fence. Every field is load-bearing; none has a default."""
 
@@ -170,6 +198,15 @@ class Fence:
     #: HISTORY-SCOPE ONLY. Domain suffixes exempt from the email-shaped
     #: pattern anywhere in a commit -- broader than the exact digests above.
     history_allowed_email_domains: Tuple[str, ...]
+    #: HISTORY-SCOPE ONLY. Message-body/subject LINE shapes (currently: the
+    #: word "copyright" followed by a year, anywhere on the line,
+    #: case-insensitive) whose declared token ids are exempted ONLY on the
+    #: specific line that matches -- never on an identity line, never on the
+    #: rest of the message, never on any other fenced token that happens to
+    #: sit on the same line. Distinct mechanism from
+    #: ``history_allowed_name_tokens``, which is scoped to an author/committer
+    #: identity rather than a line shape.
+    history_allowed_message_shapes: Tuple[MessageShapeRule, ...]
 
     # -- derived lookups ---------------------------------------------------
 
@@ -372,6 +409,39 @@ def load_fence(path: Path) -> Fence:
             f"{path}: history_allowed_identities.allowed_email_domains must be a list"
         )
 
+    message_shapes_raw = _require(raw, "history_allowed_message_shapes", str(path))
+    if not isinstance(message_shapes_raw, list):
+        raise FenceError(f"{path}: history_allowed_message_shapes must be a list")
+    message_shapes: List[MessageShapeRule] = []
+    seen_shape_ids: set = set()
+    for i, entry in enumerate(message_shapes_raw):
+        where = f"{path}: history_allowed_message_shapes[{i}]"
+        if not isinstance(entry, dict):
+            raise FenceError(f"{where}: must be a mapping")
+        shape_id = str(_require(entry, "id", where))
+        if shape_id in seen_shape_ids:
+            raise FenceError(f"{where}: duplicate shape id {shape_id!r}")
+        seen_shape_ids.add(shape_id)
+        try:
+            shape_regex = re.compile(str(_require(entry, "pattern", where)))
+        except re.error as exc:
+            raise FenceError(f"{where}: pattern does not compile: {exc}") from exc
+        shape_exempts_raw = _require(entry, "exempt_token_ids", where)
+        if not isinstance(shape_exempts_raw, list) or not shape_exempts_raw:
+            raise FenceError(
+                f"{where}: exempt_token_ids must be a non-empty list -- a "
+                "shape exemption with nothing to exempt does nothing and is "
+                "not a valid entry."
+            )
+        for token_id in shape_exempts_raw:
+            if str(token_id) not in known_tokens:
+                raise FenceError(
+                    f"{where}: exempts unknown token id {token_id!r}"
+                )
+        message_shapes.append(
+            MessageShapeRule(shape_id, shape_regex, tuple(str(t) for t in shape_exempts_raw))
+        )
+
     return Fence(
         tokens=tuple(tokens),
         patterns=tuple(patterns),
@@ -387,6 +457,7 @@ def load_fence(path: Path) -> Fence:
         history_allowed_name_tokens=history_name_tokens,
         history_allowed_email_digests=tuple(history_email_digests),
         history_allowed_email_domains=tuple(str(d).lower() for d in history_domains_raw),
+        history_allowed_message_shapes=tuple(message_shapes),
     )
 
 
@@ -432,6 +503,12 @@ class ScanResult:
     identities_checked: int = 0
     identities_exempted: int = 0
     emails_exempted: int = 0
+    #: HISTORY-SCOPE. How many subject/body LINES matched a declared
+    #: ``history_allowed_message_shapes`` entry and had that entry's tokens
+    #: exempted on that line alone. Printed every run, same discipline as the
+    #: identity counters -- a widened shape allowlist must be visible in the
+    #: report, not only in the config diff.
+    message_lines_exempted: int = 0
 
     @property
     def clean(self) -> bool:
@@ -740,6 +817,14 @@ def scan_history(
     that clears the author line is still a finding if the same word turns up
     in the commit message -- the allowlist exempts a KNOWN IDENTITY, not a
     word, and the subject/body were never that identity's line to begin with.
+
+    ``fence.history_allowed_message_shapes`` is a third, distinct mechanism:
+    a subject/body LINE (searched anywhere in the line, not anchored to its
+    start -- a genuine copyright mention showed up mid-sentence in a real
+    release commit) matching a declared shape has ONLY that shape's declared
+    tokens exempted, only on that line. A different fenced token on the same
+    line is still a finding; the same declared tokens on a different line are
+    still a finding.
     """
     if log_text is None:
         code, out, err = _run_git(root, ["rev-parse", "--git-dir"])
@@ -789,16 +874,32 @@ def scan_history(
         rest_lines = [f"subject: {subject}"]
         if body.strip():
             rest_lines.extend(body.splitlines())
-        # No exempt_token_ids here: the subject/body is nobody's identity
+        # No identity exemption here: the subject/body is nobody's identity
         # line, so a fenced word there is still a finding even for an
         # allowlisted identity. The email exemption stays -- the co-author
         # trailer's address lives in the body, not on an identity line.
-        scan_text(
-            "\n".join(rest_lines) + "\n", fence, path=commit_path,
-            extra_allowed_email_domains=fence.history_allowed_email_domains,
-            extra_allowed_email_digests=fence.history_allowed_email_digests,
-            line_offset=2, result=res,
-        )
+        #
+        # Each line is scanned SEPARATELY (rather than as one joined block,
+        # as before) because a message-shape match is scoped to the ONE line
+        # that carries it: a copyright notice three lines into the body must
+        # not exempt its declared tokens anywhere else in the same message.
+        for idx, line in enumerate(rest_lines):
+            line_exempt_ids: Tuple[str, ...] = ()
+            for shape in fence.history_allowed_message_shapes:
+                # search(), not match(): a genuine copyright mention can sit
+                # anywhere in a prose line ("...Apache License 2.0, copyright
+                # 2026 ..."), not only at the line's start.
+                if shape.regex.search(line):
+                    line_exempt_ids = shape.exempt_token_ids
+                    res.message_lines_exempted += 1
+                    break
+            scan_text(
+                line + "\n", fence, path=commit_path,
+                exempt_token_ids=line_exempt_ids,
+                extra_allowed_email_domains=fence.history_allowed_email_domains,
+                extra_allowed_email_digests=fence.history_allowed_email_digests,
+                line_offset=2 + idx, result=res,
+            )
     return res, commits
 
 
@@ -810,7 +911,15 @@ def render_history_report(res: ScanResult, commits: int, root: Path) -> str:
              f"(author + committer), {res.identities_exempted} matched an "
              f"allowlisted identity, {res.emails_exempted} address(es) "
              f"cleared by the history-scope email allowlist -- never silent, "
-             f"printed whether or not it changed the verdict"]
+             f"printed whether or not it changed the verdict",
+             f"  message-shape allowlist: {res.message_lines_exempted} "
+             f"subject/body line(s) matched a declared shape (the word "
+             f"'copyright' followed by a year, anywhere on the line, "
+             f"case-insensitive) and had that shape's declared tokens "
+             f"exempted on that line alone -- the exemption never extends "
+             f"to another fenced token on the same line, and every other "
+             f"line, including lines carrying the same tokens, stays fully "
+             f"checked"]
     if res.findings or res.bad_markers:
         lines.append(f"  FINDINGS: {len(res.findings)}")
         for finding in res.findings + res.bad_markers:
@@ -912,6 +1021,18 @@ def _synthetic_fence(planted: str) -> Fence:
             hashlib.sha256(_SYNTHETIC_EXACT_EMAIL.encode("utf-8")).hexdigest(),
         ),
         history_allowed_email_domains=("reserved.example",),
+        # A message-shape entry unrelated to ``planted`` in name only -- it
+        # reuses the planted token ids as what it exempts, proving the LINE
+        # mechanism fires without needing a third invented token. Matches
+        # the real shape: case-insensitive, anywhere in the line, not
+        # anchored to its start.
+        history_allowed_message_shapes=(
+            MessageShapeRule(
+                "planted-copyright-line",
+                re.compile(r"(?i)\bcopyright (\(c\) )?\d{4}\b"),
+                ("planted-word", "planted-substring"),
+            ),
+        ),
     )
 
 
@@ -1084,7 +1205,51 @@ def selftest() -> int:
     check("the history report states identity-check and exemption counts even when nothing fired",
           "history allowlist:" in rendered)
 
-    # 26: an unusable fence is fatal, never a quiet clean run.
+    # 26-28: the message-shape allowlist. A commit message LINE matching a
+    # declared shape (a copyright notice) has ONLY that shape's declared
+    # tokens exempted, and only on that line -- never the identity line,
+    # never any other line in the same message.
+    copyright_log = _log(("abc123def456", "A Person", "safe@example.com",
+                          "A Person", "safe@example.com", "release",
+                          f"Copyright 2026 {planted} Person"))
+    hist, _ = scan_history(Path("."), fence, log_text=copyright_log)
+    check("a copyright-shaped message line exempts its declared tokens",
+          hist.clean and hist.message_lines_exempted == 1)
+
+    non_copyright_log = _log(("abc123def456", "A Person", "safe@example.com",
+                              "A Person", "safe@example.com", "release",
+                              f"see {planted} for the maintainer"))
+    hist, _ = scan_history(Path("."), fence, log_text=non_copyright_log)
+    check("the same tokens on a non-copyright body line are still a finding",
+          any(f.rule_id in ("planted-word", "planted-substring") for f in hist.findings)
+          and hist.message_lines_exempted == 0)
+
+    rendered = render_history_report(hist, 1, Path("."))
+    check("the history report states the message-shape exemption count",
+          "message-shape allowlist:" in rendered)
+
+    # 29: the real shape is case-insensitive and mid-sentence, not anchored
+    # to the line's start -- and a DIFFERENT fenced token on that same line
+    # is still a finding, because the exemption is scoped to the shape's
+    # declared token ids, never to the whole line.
+    estate_word = "restatezqx"
+    estate_digest = hashlib.sha256(estate_word.encode("ascii")).hexdigest()
+    fence_with_estate = _dc_replace(
+        fence,
+        tokens=fence.tokens + (TokenRule("estate-token", estate_digest, len(estate_word), "word"),),
+    )
+    midsentence_log = _log(("abc123def456", "A Person", "safe@example.com",
+                            "A Person", "safe@example.com", "release",
+                            f"Apache License 2.0, copyright 2026 {planted} Person, "
+                            f"also mentions {estate_word} here"))
+    hist, _ = scan_history(Path("."), fence_with_estate, log_text=midsentence_log)
+    check("a mid-sentence lowercase copyright mention clears its declared tokens",
+          not any(f.rule_id in ("planted-word", "planted-substring") for f in hist.findings)
+          and hist.message_lines_exempted == 1)
+    check("a different fenced token on the same copyright-shaped line is still a finding",
+          any(f.rule_id == "estate-token" for f in hist.findings))
+
+    # 30: an unusable fence is fatal, never a quiet clean run.
     with tempfile.TemporaryDirectory() as tmp:
         bad = Path(tmp) / "fence.yaml"
         bad.write_text("schema: exposure-fence/v1\nas_of: 'x'\n", encoding="utf-8")
