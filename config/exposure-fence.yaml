@@ -367,6 +367,8 @@ skip_dirs:
   - "dist"
   - "node_modules"
   - "site-packages"
+  - "intentops.egg-info"
+  - "venv"
 
 # Extensions never read as text. The gate also probes for a null byte, so an
 # unlisted binary is still skipped -- this list only saves the read.

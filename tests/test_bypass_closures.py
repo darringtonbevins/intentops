@@ -163,9 +163,19 @@ NODE_LOCAL_GLOBS = {".intentops-hooks/**"}
 
 
 def test_every_declared_core_glob_matches_a_tracked_file() -> None:
-    tracked = subprocess.run(
-        ["git", "ls-files"], cwd=str(REPO_ROOT),
-        capture_output=True, text=True, check=True).stdout.split()
+    proc = subprocess.run(
+        ["git", "ls-files"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    if proc.returncode == 0:
+        tracked = proc.stdout.split()
+    else:
+        # A git-archive export (the F1 cold suite) has no .git: walk the tree instead,
+        # skipping the same build artifacts the fence skips.
+        skip = {".git", "intentops.egg-info", "build", "dist", ".venv", "venv", "__pycache__", ".pytest_cache"}
+        tracked = [
+            p.relative_to(REPO_ROOT).as_posix()
+            for p in REPO_ROOT.rglob("*")
+            if p.is_file() and not (set(p.relative_to(REPO_ROOT).parts[:-1]) & skip)
+        ]
     dead = []
     for entry in vc.load_core_surface(SURFACE).entries:
         if entry.glob in NODE_LOCAL_GLOBS:

@@ -179,7 +179,7 @@ def test_key_shape_is_left_anchored(tmp_path):
         encoding="utf-8",
     )
     r = subprocess.run(
-        [sys.executable, "scripts/ops/trust_material_check.py", "--root", str(tmp_path)],
+        [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts" / "ops" / "trust_material_check.py"), "--root", str(tmp_path)],
         capture_output=True, text=True,
     )
     assert "VERDICT: CLEAN" in r.stdout, r.stdout[-400:]
