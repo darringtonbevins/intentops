@@ -1,0 +1,17 @@
+{
+  "schema": "trust-revocation/v1",
+  "as_of": "2026-09-06",
+  "_comment": "WRITE MODEL: single-writer, signed-artifact-only. This file is never edited by hand or by routine code -- it is replaced wholesale by the release process each time a key is revoked, signed by R-INTENTOPS, and republished. A clone caches its own copy and refuses (never silently accepts) any file whose `sequence` is lower than the cached one (rollback protection, trust-root-design.md sect. 8.2). Today this file carries no signature because nothing has been revoked and no root has been minted (see config/trust-roots.yaml) -- `signature` is null rather than omitted, so the absence is a visible fact instead of a missing field.",
+  "sequence": 0,
+  "issued_by": "R-INTENTOPS",
+  "issued_at": null,
+  "signature": null,
+  "entries": [],
+  "_entry_schema": {
+    "key_id": "first 16 hex chars of the revoked key's fingerprint",
+    "fingerprint": "sha256:<64hex> of the revoked key, full form",
+    "revoked_at": "date the revocation was issued",
+    "reason": "compromise | superseded | ceremony-error | operator-request",
+    "advisory": "path or URL to the human-readable advisory naming what happened"
+  }
+}

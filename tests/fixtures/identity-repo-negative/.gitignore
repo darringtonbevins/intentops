@@ -1,0 +1,10 @@
+# Shapes this repository refuses by name. A refusal with no carrier is a
+# promise; these lines are the carrier.
+*.key
+*.pem
+*.pfx
+*.p12
+*.jks
+id_ed25519
+id_rsa
+*.keystore

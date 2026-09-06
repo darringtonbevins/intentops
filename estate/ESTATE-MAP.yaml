@@ -1,0 +1,56 @@
+# ESTATE-MAP -- which estates exist on this node, and the autonomy gradient over them.
+#
+# GENESIS SHIPS THIS EMPTY. `entries: []` is a true statement about a new node:
+# it has no estates yet because nobody has told it about any. A MISSING file is
+# a different thing entirely and is a HALT -- see estate/README.md.
+#
+# This file is the operator-authored replacement for a term table that used to
+# live in code. The precedence rule and the treatment of an undecidable item
+# stay in code; the vocabulary of THIS operator's world lives here.
+#
+# WRITE MODEL: single writer -- the operator, by hand or through an explicit
+# generator, one process at a time. No concurrent programmatic writer exists.
+# The loader (intentops_core.estate.manifests) never writes this file.
+#
+# CLOSED VOCABULARIES. An undeclared value is a HALT, never a default of
+# "everything applies":
+#
+#   kind:     internal | venture | served | household
+#             internal  -- the node's own estate; the operator's own machinery
+#             venture   -- an enterprise the operator owns
+#             served    -- an organisation the operator serves but does not own
+#             household -- personal/domestic affairs
+#
+#   autonomy: propose | reversible | prod-asks
+#             propose     -- the node proposes; the operator disposes
+#             reversible  -- reversible acts proceed; anything else is proposed
+#             prod-asks   -- any production write asks, every time
+#
+#   PRECEDENCE when an item names more than one estate is decided in code and
+#   resolves toward the STRICTER estate. An item that matches nothing resolves
+#   to `unknown`, and `unknown` is OMITTED from any fact vocabulary -- never
+#   defaulted -- so no predicate fires on an estate nobody observed.
+#
+# REQUIRED PER ENTRY: id, label, kind, autonomy, keywords, ruled_by, as_of
+#
+# EXAMPLE ENTRY (commented out; the names are fictional). Copy, edit, uncomment:
+#
+# - id: "northwind-labs"
+#   label: "Northwind Labs"
+#   kind: venture
+#   autonomy: reversible
+#   keywords: ["northwind", "northwind labs", "nwl"]
+#   ruled_by: "the operator, 2026-09-06, in the founding conversation"
+#   as_of: "2026-09-06"
+#
+# - id: "greenfield-partners"
+#   label: "Greenfield Partners (served)"
+#   kind: served
+#   autonomy: prod-asks
+#   keywords: ["greenfield", "greenfield partners"]
+#   ruled_by: "the operator, 2026-09-06"
+#   as_of: "2026-09-06"
+
+schema: estate-map/v1
+as_of: "2026-09-06"
+entries: []

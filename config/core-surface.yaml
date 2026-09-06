@@ -1,0 +1,82 @@
+# The declared core-mechanic surface (genesis-design sect. 9.2).
+#
+# WHY THIS FILE EXISTS. The reference implementation this project generalises
+# from once carried this list as a hardcoded tuple, with a comment begging
+# future authors to keep it in sync. A comment is not a gate. This file makes
+# the surface a declared, versioned, reviewable list instead of a heuristic
+# buried in a conditional.
+#
+# THE RULE THIS FILE ENFORCES (stated here because it governs how the file is
+# read, not just what it contains): a write that targets none of the globs
+# below is NOT a core-mechanic change and proceeds under ordinary review. A
+# write that targets one of these globs by a path the reader does not
+# recognise -- a typo, a symlink, a new file under an old directory -- is
+# still core-mechanic, because absence from a glob's literal match is not the
+# same claim as absence from its intent. When genuinely uncertain whether a
+# path is covered, the values-council gate (see docs/reference/values-council.md)
+# treats it as covered. An undeclared surface is a hard exit, never a default
+# of "probably not core" (no-silent-failures.md rule 6; the same discipline
+# capability-kinds.yaml and ports.yaml apply to their own closed vocabularies).
+#
+# WRITE MODEL: reviewed, human-authored config. Not a store; nothing appends
+# to it programmatically. Widening or narrowing this list is itself a
+# core-mechanic change and goes through the same gate this file feeds.
+#
+# Consumed by: the values-council gate's step-0 pre-check (genesis-design
+# sect. 9.3) -- for a Write/Edit/MultiEdit tool call, by path; for a Bash or
+# PowerShell tool call, by the command's target-path SKELETON only, reusing
+# the reaches-reality classifier's skeleton parser, and NEVER by file content
+# (genesis-design sect. 9.3 correction, 2026-09-06 -- a shell command that
+# reaches one of these paths must not be able to bypass the same steward a
+# direct edit would face).
+
+schema: core-surface/v1
+as_of: "2026-09-06"
+
+# Each entry: a path glob (relative to the repo root) plus the one-line reason
+# it is core-mechanic. `reason` is required -- a glob with no stated reason is
+# a rule nobody can argue with, which is the failure mode this file exists to
+# retire.
+surface:
+  - glob: "packages/intentops-core/src/intentops_core/invariants/**"
+    reason: "the invariants themselves (GIDE / TAPCH+ / vocabulary) -- the floor everything else is checked against"
+
+  - glob: "packages/intentops-core/src/intentops_core/tiers/**"
+    reason: "the T0-T4 authorization ladder"
+
+  - glob: "packages/intentops-core/src/intentops_core/classify/**"
+    reason: "the reaches-reality classifier -- the discriminator that outranks the tier label itself"
+
+  - glob: "packages/intentops-core/src/intentops_core/gate/**"
+    reason: "the gate engine: decide(), the hook/gate chain, and every saddle's binding to it"
+
+  - glob: "packages/intentops-core/src/intentops_core/councils/**"
+    reason: "the Posture Council and the Moral Compass Council -- their own code, not their verdicts"
+
+  - glob: "packages/intentops-core/src/intentops_core/ordering/**"
+    reason: "the ordering store -- an ordering BINDS; changing how it binds is core"
+
+  - glob: "packages/intentops-core/src/intentops_core/validation/**"
+    reason: "the validation family (grounded-signal, witness, self-probe, still-true) -- the instruments that keep every other claim honest"
+
+  - glob: "genesis/imprint/**"
+    reason: "the signed birth bundle -- invariants, rules corpus, archetype catalogue, the imprint manifest itself"
+
+  - glob: "config/core-surface.yaml"
+    reason: "this file declares its own surface; widening or narrowing it is core-mechanic by definition"
+
+  - glob: "config/trust-roots.yaml"
+    reason: "the embedded authority strings a clone verifies its birth bundle against"
+
+  - glob: "config/trust-revocation.json"
+    reason: "the signed revocation list -- rollback protection depends on this file's integrity"
+
+  - glob: ".intentops-hooks/**"
+    reason: "the hook chain a host saddle wires into its runtime (pre-tool, session-start, stop)"
+
+  - glob: "packages/intentops-saddle-*/src/**/gate_binding*"
+    reason: "the point where a host adapter binds S2 decide() -- a broken binding here is a gate that never fires"
+
+# `signs` in config/trust-roots.yaml carries `core_mechanic_change` as one of
+# its closed vocabulary values precisely so a signed artifact can attest that
+# a change to one of the above globs went through the values-council gate.

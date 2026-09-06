@@ -1,0 +1,7 @@
+schema: identity-consent/v1
+as_of: "2026-09-06"
+# Append-only in meaning as well as in form: a withdrawal is a NEW event.
+# Deleting the record of a consent destroys the evidence that it was asked for.
+events: []
+off_limits: []
+signed_by: null

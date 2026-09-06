@@ -1,0 +1,44 @@
+# RESOURCES -- what the estate can SPEND.
+#
+# GENESIS SHIPS THIS EMPTY. A MISSING file is a HALT (estate/README.md).
+#
+# WRITE MODEL: single writer -- the operator, by hand or through an explicit
+# generator, one process at a time. The loader never writes this file.
+#
+# CLOSED VOCABULARY. An undeclared value is a HALT:
+#
+#   kind: compute | model-pool | storage | network | budget | human-time
+#
+# `telemetry_source` HAS NO DEFAULT AND NULL IS A HALT. A registry that
+# half-understands its rows produces a control plane that runs and is wrong,
+# and a resource nobody can read is an UNMETERED resource. If a pool genuinely
+# cannot be metered, say so in the string ("unmetered: the provider publishes
+# no usage endpoint as of <date>") -- an unmetered pool you can read about is
+# the opposite of one that is silently absent. The count of such rows is the
+# headline any consumption report should lead with.
+#
+# REQUIRED PER ENTRY: id, kind, limit_shape, telemetry_source, max_concurrent,
+#                     kill_switch, data_fence, as_of
+#
+#   limit_shape    -- how the limit is shaped (per-minute, per-window, monthly,
+#                     hard cap, none-observed)
+#   max_concurrent -- declared, not measured. Missing means HALT, never a
+#                     default: a scheduler that invents a concurrency number
+#                     over-allocates silently
+#   kill_switch    -- how a human stops this resource being drawn on
+#   data_fence     -- what may and may not be sent to it
+#
+# EXAMPLE ENTRY (commented out; the names are fictional):
+#
+# - id: "local-inference"
+#   kind: model-pool
+#   limit_shape: "none-observed; bounded by local hardware"
+#   telemetry_source: "the local runtime's own request log"
+#   max_concurrent: 1
+#   kill_switch: "stop the local runtime process"
+#   data_fence: "local only; nothing leaves this host"
+#   as_of: "2026-09-06"
+
+schema: estate-resources/v1
+as_of: "2026-09-06"
+entries: []

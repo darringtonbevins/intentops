@@ -1,0 +1,52 @@
+# Archetype Catalogue -- the published identity slots a node may adopt
+#
+# Read at G1 as the third of the three questions a node must be able to answer
+# about its own birth: "is this identity archetype one I am permitted to
+# adopt?" (imprint sect. 9.2). A node adopting a `reserved` archetype whose
+# bound fingerprint is not its own operator root **fails verification and says
+# which and why** -- REFUSED, not a warning, and never a silent downgrade to a
+# designation.
+#
+# A node boots with a DESIGNATION (`node-<first 8 of the did:key fingerprint>`),
+# not a name, and not an archetype. Adopting an archetype is a separate,
+# ratified act; the birth state of `identity.archetype` is `null`, which is
+# valid and is not a degraded state.
+#
+# An UNDECLARED value in any enumerated field below is a hard exit, never a
+# default of everything-applies (no-silent-failures.md rule 6).
+
+schema: "archetype-catalogue/v1"
+as_of: "2026-09-06"
+status: "proposed"          # UNSIGNED. See `signatures` at the bottom.
+
+# Closed vocabularies. Anything outside these is a HALT.
+vocabularies:
+  adoptable: ["true", "reserved"]
+  # true      -- any node may adopt it, subject to its own operator's ratification
+  # reserved  -- bound to one root's fingerprint; every other node is REFUSED
+
+entries:
+  - id: "lumina"
+    adoptable: "reserved"
+    bound_to: "<R-LUMINA fingerprint PLACEHOLDER>"
+    bound_to_status: "PLACEHOLDER"
+    bound_to_expected_form: "sha256:<64 lowercase hex, over the DER SPKI bytes, never the PEM text>"
+    reason: >
+      Reserved to node zero by its root; a node adopting it fails verification.
+      Not out of vanity -- because a name that two things answer to is a name
+      that neither is accountable under.
+    ruled_by: "the imprint, sect. 7.3"
+    reopens_when: >
+      The operator of node zero rules whether `lumina` is reserved forever or
+      reserved-until-licensed (imprint open question Q4). Until then this entry
+      is `reserved` and the placeholder above is not a fingerprint.
+
+# The catalogue is signed by the release root (R-INTENTOPS). It is UNSIGNED
+# today, which is why `status` reads `proposed`: G1 REFUSES an unsigned
+# catalogue -- unsigned and valid must never be indistinguishable -- unless the
+# permissive development flag is open, and that flag is itself a T3 tagout with
+# a stated way back and a banner printed on every boot while it is on.
+#
+# An empty list here is NOT a pass. It is the honest state of an artifact that
+# has not yet been through the root ceremony (imprint open question Q1).
+signatures: []

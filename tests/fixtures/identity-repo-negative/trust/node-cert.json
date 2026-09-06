@@ -1,0 +1,11 @@
+{
+  "schema": "trust-projection/v1",
+  "as_of": "2026-09-06",
+  "role": "node",
+  "designation": "node-0f1e2d3c",
+  "public_key_pem": "PLACEHOLDER-NOT-A-KEY",
+  "fingerprint": "sha256:PLACEHOLDER-NODE",
+  "issued_by": "sha256:PLACEHOLDER-OPERATOR-ROOT",
+  "valid_from": "2026-09-06",
+  "valid_until": "2029-09-06"
+}

@@ -1,0 +1,4 @@
+schema: wish-register/v1
+as_of: "2026-09-06"
+# Append-only. Entries are never deleted; grant status and lineage change.
+wishes: []

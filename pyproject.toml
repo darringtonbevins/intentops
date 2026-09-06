@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intentops"
+dynamic = ["version"]
+description = "Governance framework for AI agents: a deterministic, tier-classified action gate; a deliberative council and precedent store above it; and a genesis that grows an aligned, accountable operator identity beneath it."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "LicenseRef-Pending" }
+authors = [
+    { name = "IntentOps contributors" },
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pyyaml",
+    "cryptography",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+intentops = "intentops_core.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["packages/intentops-core"]
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["packages/intentops-core"]

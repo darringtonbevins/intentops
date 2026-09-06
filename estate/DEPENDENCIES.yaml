@@ -1,0 +1,57 @@
+# DEPENDENCIES -- what must be alive for a capability to work.
+#
+# GENESIS SHIPS THIS EMPTY. A MISSING file is a HALT (estate/README.md).
+#
+# WRITE MODEL: single writer -- the operator, by hand or through an explicit
+# generator, one process at a time. The loader never writes this file.
+#
+# CLOSED VOCABULARIES. An undeclared value is a HALT:
+#
+#   kind:        service | package | host | credential | external-api
+#   criticality: required | degraded-ok | optional
+#
+# `health_probe` HAS NO DEFAULT, AND A REFUSAL STAYS IN THE DENOMINATOR.
+#
+#   - the key MISSING is a HALT. A dependency whose health nobody described is
+#     a field nobody read.
+#   - the key present and NULL means "this dependency cannot be probed". That
+#     is a legitimate state and it must be SAID, not implied: the entry must
+#     also carry `unprobeable_reason`, and the loader then materialises the
+#     probe as `{"type": "unprobeable", "reason": "<that text>"}`.
+#   - `health_probe: null` with NO `unprobeable_reason` is a HALT.
+#
+#   The reason this shape exists rather than "skip the ones we cannot check":
+#   an entry that leaves the population makes every coverage number LOOK
+#   BETTER. A silent failure leaves a suspicious zero; a denominator failure
+#   leaves a flattering number, which is why it survives review. An
+#   unprobeable dependency is counted, graded not-ok, and carries WHY.
+#
+# REQUIRED PER ENTRY: id, kind, depends_on, health_probe, criticality,
+#                     fallback, as_of
+#
+#   depends_on -- ids of capabilities or other dependencies. May be []
+#   fallback   -- what happens when this is down. "none" is an answer; absence
+#                 of the field is not
+#
+# EXAMPLE ENTRIES (commented out; the names are fictional):
+#
+# - id: "dep-local-runtime"
+#   kind: service
+#   depends_on: []
+#   health_probe: "GET http://127.0.0.1:11434/api/tags returns 200"
+#   criticality: degraded-ok
+#   fallback: "the node runs with no local inference and says so"
+#   as_of: "2026-09-06"
+#
+# - id: "dep-operator-attention"
+#   kind: host
+#   depends_on: []
+#   health_probe: null
+#   unprobeable_reason: "whether a human is at the keyboard is not mechanically decidable from here; the TTY check at a gate is the closest instrument and it answers a narrower question"
+#   criticality: required
+#   fallback: "human-gated work waits; it never proceeds on a default"
+#   as_of: "2026-09-06"
+
+schema: estate-dependencies/v1
+as_of: "2026-09-06"
+entries: []

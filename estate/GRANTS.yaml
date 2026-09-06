@@ -1,0 +1,67 @@
+# GRANTS -- what authority has been granted, by whom, and until when.
+#
+# GENESIS CREATES NO GRANT. A node is born with `entries: []` and that is the
+# honest state: nobody has yet given it authority over anything. A MISSING file
+# is a HALT (estate/README.md).
+#
+# WRITE MODEL: single writer -- the operator, by hand or through an explicit
+# generator, one process at a time. The loader never writes this file, and
+# genesis never adds a row to it.
+#
+# TWO PROPERTIES THAT ARE NOT NEGOTIABLE, AND WHY.
+#
+#   1. `expires_at` IS REQUIRED. There are no perpetual grants. A grant with no
+#      end date is a grant nobody ever has to look at again, and the failure it
+#      produces is silent: authority accumulates and no one is ever asked
+#      whether it is still wanted. An entry with a missing or null `expires_at`
+#      is a HALT, not a warning -- the loader will not start the node on a
+#      manifest it cannot bound in time.
+#
+#      Note the sibling failure, which is why an expiry must be SURFACED and
+#      not merely enforced: an expiry is a DECISION that nobody makes at the
+#      moment it fires. A lapse must be visible before it lands, and the record
+#      of who granted the authority must survive the lapse. An expiry routine
+#      that overwrites `granted_by` destroys the evidence of the ruling it is
+#      retiring.
+#
+#   2. A GRANT WHOSE `granted_by` IS NOT THIS NODE'S OPERATOR ROOT RAISES
+#      NOTHING. It is not applied, it is not an error, and it is not silently
+#      dropped: the loader records a WARN naming the entry and the foreign
+#      key_id, and the grant sits in the file doing nothing. A node inherits
+#      authority from the person who is answerable for it and from nobody else
+#      -- not from a bundle it was shipped with, not from a peer, not from a
+#      previous operator.
+#
+# CLOSED VOCABULARY. An undeclared value is a HALT:
+#
+#   tier_ceiling: T0 | T1 | T2 | T3 | T4
+#
+# REQUIRED PER ENTRY: id, granted_by, scope, tier_ceiling, estate,
+#                     reaches_reality, expires_at, reopens_when, revoked_at,
+#                     evidence
+#
+#   granted_by      -- the operator root `key_id`, not a name
+#   reaches_reality -- true if acts under this grant touch anything outside the
+#                      node itself. The classifier, not the tier label, is the
+#                      discriminator; this field records the answer
+#   reopens_when    -- what would make this grant wrong. May be an empty string
+#                      only if the operator stated none; never invent one
+#   revoked_at      -- null while live. Revocation is an event, not a deletion
+#   evidence        -- where the granting act is recorded
+#
+# EXAMPLE ENTRY (commented out; the key_id is fictional):
+#
+# - id: "grant-read-local-repos"
+#   granted_by: "0000000000000000"
+#   scope: "read files under the node's own workspace"
+#   tier_ceiling: "T0"
+#   estate: "core"
+#   reaches_reality: false
+#   expires_at: "2026-12-31"
+#   reopens_when: "the workspace comes to hold material the operator has fenced"
+#   revoked_at: null
+#   evidence: "founding conversation, 2026-09-06"
+
+schema: estate-grants/v1
+as_of: "2026-09-06"
+entries: []

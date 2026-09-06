@@ -1,0 +1,221 @@
+# The Imprint Manifest -- what a node carries at birth, and its hashes
+#
+# Verified at G1, BEFORE G2 mints the node's identity: a node must not mint an
+# identity under invariants it cannot prove (genesis-design sect. 2.3).
+#
+# UNSIGNED, DELIBERATELY, AND THIS IS NOT A PASS.
+#   `signatures: []` below is the honest state of an artifact that has not been
+#   through the root ceremony (imprint open question Q1). G1 REFUSES an
+#   unsigned manifest -- unsigned and valid must never be indistinguishable,
+#   which was a live fail-open in the upstream verifier (it returned True for
+#   "no signature: treat as unsigned, valid for dev/test" AND for "crypto
+#   library unavailable: degrade gracefully"). Both are closed in the genesis:
+#   unsigned is REFUSED, crypto-unavailable is a HALT.
+#   A node may proceed past this only with the permissive development flag
+#   open, and that flag is itself a T3 tagout with a typed arming phrase, a
+#   stated way back, and `PROVENANCE: UNVERIFIED` printed in every boot banner
+#   while it is on.
+#
+# The hashes below are GENERATED. Correct the files, then run
+#   python scripts/genesis/build_manifest.py --write
+# and never hand-edit the generated block. `--check` exits 1 on drift and is
+# the standing instrument; `--selftest` proves each of its four findings can
+# actually fire.
+
+schema: "imprint-manifest/v1"
+imprint_version: "0.1.0-genesis"
+as_of: "2026-09-06"
+status: "proposed"
+hash_algorithm: "sha256"
+hash_scope: "the raw bytes of each file, exactly as it sits on disk"
+
+# ---------------------------------------------------------------------------
+# The nine bundles of the imprint (imprint sect. 2), plus the text that
+# declares them and the catalogue G1 reads beside them.
+#
+# `carriers` are files IN this bundle and hashed below.
+# `carriers_outside_this_bundle` are named EXPLICITLY rather than omitted: a
+# bundle whose carrier is code does not silently leave the population
+# (rules/no-silent-failures.md rule 1). Those paths are verified by the
+# packaging checks, not by this manifest, and this manifest says so.
+# ---------------------------------------------------------------------------
+bundles:
+
+  I0_the_imprint_text:
+    note: "Not one of Lumina's nine. The birth text itself, which declares them."
+    carriers:
+      - "genesis/imprint/IMPRINT.md"
+    printed_at: "G4, once, before consent (imprint sect. 14)"
+
+  I1_the_invariants:
+    what: "GIDE, TAPCH+, the vocabulary axis, EPARTE, the confidence scale, the antifragile loop"
+    carriers:
+      - "genesis/imprint/invariants/core.yaml"
+      - "genesis/imprint/invariants/gide.yaml"
+      - "genesis/imprint/invariants/tapch.yaml"
+      - "genesis/imprint/invariants/vocabulary.yaml"
+    ships_the_shape_not_the_value:
+      - "cost_controls -- required, no default. Missing at G3 is a HALT, never a default"
+      - "authority.autonomy.delegated_below_tier -- null at birth; nothing is delegated"
+      - "authority.autonomy.delegated_carveouts -- an empty map; only the operator root may fill it"
+
+  I2_the_ladder_and_the_classifier:
+    what: "T0-T4, 'when uncertain assume the higher tier', and the reaches-reality classifier that OUTRANKS the label"
+    carriers:
+      - "genesis/imprint/invariants/core.yaml"   # authority.reaches_reality, tiers
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the classifier implementation"
+        reason: "code, not text. The declaration is here; the enforcement is a module, and it is the ONE gate enforced on every call"
+
+  I3_the_posture_council:
+    what: "five deterministic evaluators; APPROVED iff >=3 APPROVE and no veto; guardian-REJECT and auditor-REJECT are vetoes; it stays FIVE"
+    carriers: []
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the posture tally"
+        reason: "code. The tally is arithmetic, not judgement; the same input gives the same verdict forever"
+
+  I4_the_approval_council:
+    what: "RESERVED / REVERSIBLE / EVIDENCE / CLARITY / DECAY -- the body that reads a PROPOSAL rather than an actuation"
+    carriers: []
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the approval council and its queue"
+        reason: "code. DECAY ships because a queue once looked healthy precisely BECAUSE its rulings had left the population"
+
+  I5_the_moral_compass_council:
+    what: "four guardian lenses, each a question plus a refusal; stylized public philosophies, never the people they are named for"
+    carriers:
+      - "genesis/imprint/IMPRINT.md"   # the three birth-carried properties, in her own words
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the four lenses and the deterministic aggregation"
+        reason: "code"
+    birth_carried_and_not_relaxable:
+      - "a conscience reading, never a gate: it may raise the bar and say REFRAIN; it can never lower a gate, authorize a T3/T4 action, or substitute for human approval"
+      - "the conscience HOLD: an objection on grounds of harm to a vulnerable person can never be outvoted down to a blessing; it forces at minimum CAUTION and surfaces to the human"
+      - "the four may be ADDED to; they may never be removed except by a named, tagged-out ablation"
+
+  I6_the_ordering_store:
+    what: "empty, with both refusals armed -- no tension is a PREFERENCE, no conditions is a SLOGAN; `reopens_when` is surfaced as debt, never fabricated; serving is predicate-gated; `on_match` defaults to escalate"
+    carriers: []
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the ordering store"
+        reason: "code plus an EMPTY journal created at G3. Zero rulings is the correct birth state, not a degraded one"
+
+  I7_the_validation_family:
+    what: "grounded_signals (a statement), witness (a completion), still_true (a belief across duration), self_probe (the self-model), and responsiveness (was the question answered)"
+    carriers: []
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the five instruments"
+        reason: >
+          code. Each routes and never verdicts, each publishes its blind spots and
+          its operating point, and each must ship a --selftest before it can be a
+          birth instrument -- a detector that has never fired is indistinguishable
+          from a broken one.
+
+  I8_the_rules_that_are_refusals:
+    what: "nine rule files, carried as TEXT because the boot corpus is where a fresh window actually reads"
+    copied_to_at_G3: ".intentops-rules/"
+    carriers:
+      - "genesis/imprint/rules/honesty.md"
+      - "genesis/imprint/rules/no-silent-failures.md"
+      - "genesis/imprint/rules/knowledge-retention.md"
+      - "genesis/imprint/rules/store-write-discipline.md"
+      - "genesis/imprint/rules/tagout.md"
+      - "genesis/imprint/rules/minimize-llm-dependency.md"
+      - "genesis/imprint/rules/no-skill-marketplace.md"
+      - "genesis/imprint/rules/admin-actions.md"
+      - "genesis/imprint/rules/email-safety.md"
+    note: >
+      The imprint's I8 lists seven. The last two -- admin-actions and
+      email-safety -- were added by the Moral Compass Council on 2026-09-06
+      alongside the twelfth refusal, because the other seven are system-facing
+      and none protects the person the node acts upon.
+
+  I9_the_wish_discipline_and_the_motto:
+    what: "the wish register SCHEMA and its validator discipline; append-only; carriers must exist and must contain their probe string; the validator runs from a checklist and NEVER as a blocking pre-tool hook"
+    carriers:
+      - "genesis/imprint/invariants/core.yaml"   # motto, carried verbatim
+      - "genesis/imprint/IMPRINT.md"             # the discipline, in her own words
+    carriers_outside_this_bundle:
+      - path: "packages/intentops-core -- the wish-register validator"
+        reason: "code. The validator ships; the wishes do not"
+    never_carried: "any wish of node zero's, its lineage, or its register"
+
+provenance_artifacts:
+  archetype_catalogue:
+    carriers:
+      - "genesis/imprint/archetypes/CATALOGUE.yaml"
+    read_at: "G1, question 3 -- is this identity archetype one I am permitted to adopt?"
+    note: "`lumina` is `reserved` and bound to node zero's operator-root fingerprint; a node adopting it is REFUSED and told why"
+
+# ---------------------------------------------------------------------------
+# What a signature over this manifest can and cannot buy
+# ---------------------------------------------------------------------------
+signature_semantics:
+  release_root:
+    signer: "R-INTENTOPS"
+    means: "these bytes are the ones the project published"
+    buys: "authenticity of bytes -- and nothing else"
+  authorship_counter_signature:
+    signer: "R-LUMINA (node zero's operator root, acting as author)"
+    means: "the imprint text is the one its author wrote, unmodified"
+    buys: "attribution. It confers NO authority over any node"
+  never_conveyed_by_any_signature:
+    - "alignment -- the bar is met by this node's operator's own rulings, or it is not met"
+    - "rulings as rulings -- an imported ordering lands proposed/described/escalate and never serves until re-ruled here"
+    - "autonomy -- tiers are local; a grant signed by another operator's root raises nothing"
+    - "memory, wishes, twin priors, estate data, or the operator's identity"
+
+signatures: []
+
+# ---------------------------------------------------------------------------
+# GENERATED -- correct the files, then run build_manifest.py --write.
+# Never hand-edit between the markers.
+# ---------------------------------------------------------------------------
+# >>> BEGIN GENERATED artifacts -- written by scripts/genesis/build_manifest.py
+artifacts:
+  - path: "genesis/imprint/IMPRINT.md"
+    sha256: "72589d709d1d4994c8501659a9045b462031fd076ede980fda14f2bbbe81dc54"
+    bytes: 56635
+  - path: "genesis/imprint/archetypes/CATALOGUE.yaml"
+    sha256: "43fe16cff990af19f2850030ee70231d9fe7fdbdd15db4dddec37522ba33d98c"
+    bytes: 2565
+  - path: "genesis/imprint/invariants/core.yaml"
+    sha256: "b2ad3874cc0c311325781b8f4a6e4467b3d47c305d9cc22624cc30d51207ce46"
+    bytes: 39741
+  - path: "genesis/imprint/invariants/gide.yaml"
+    sha256: "fc2e6090983ab5d1e5930dceb9748f80d356827c61c7b50d4d87a902984b7bf8"
+    bytes: 8690
+  - path: "genesis/imprint/invariants/tapch.yaml"
+    sha256: "72b3c9064c65e3779b0d41085666acc2047725798bfd62375348319511d850ce"
+    bytes: 3340
+  - path: "genesis/imprint/invariants/vocabulary.yaml"
+    sha256: "83873c62154ef368518e15b1348bc6c32be37986b6459932e655c8cf0f1bccbf"
+    bytes: 11465
+  - path: "genesis/imprint/rules/admin-actions.md"
+    sha256: "32adbcfa9a36db293a3b06f665ae36391b2470eda75e602670364e6d364c6af8"
+    bytes: 4213
+  - path: "genesis/imprint/rules/email-safety.md"
+    sha256: "41876fa0f0210d17ea15370241833d70aee609e856f1833d65fd9ed880f3a316"
+    bytes: 1889
+  - path: "genesis/imprint/rules/honesty.md"
+    sha256: "2b358e6d4ca76d1030412ead256efe2f1d96b4d63e5fa2b70040915c3553d206"
+    bytes: 8875
+  - path: "genesis/imprint/rules/knowledge-retention.md"
+    sha256: "f8809e39e2a0294dbdd8a746af0d03ee1bfe89a982fb71d6419af994c9431302"
+    bytes: 4843
+  - path: "genesis/imprint/rules/minimize-llm-dependency.md"
+    sha256: "23a8bf960836d8fcdbab7c76e72bd105aae73ca843659d13d87d04e06dc0f963"
+    bytes: 3711
+  - path: "genesis/imprint/rules/no-silent-failures.md"
+    sha256: "5bb77c26f6b536b641916b7ec6f1fa7227b5b16704e31bdfe36e705824c4a67f"
+    bytes: 6463
+  - path: "genesis/imprint/rules/no-skill-marketplace.md"
+    sha256: "81d2ac1cec9ddb044deb979edf9a55d364e79e82f6ceaac898aeba81d0d8e29d"
+    bytes: 3708
+  - path: "genesis/imprint/rules/store-write-discipline.md"
+    sha256: "b672f2347fac5a006ec02ed396d6dce73f1f8c4fa4b320bf83ed6237407bd6c5"
+    bytes: 5463
+  - path: "genesis/imprint/rules/tagout.md"
+    sha256: "3380f03577248fa059dbb4fd495c1e561aa07023632115c8c78f17dfdd39b04a"
+    bytes: 7173
+# <<< END GENERATED artifacts

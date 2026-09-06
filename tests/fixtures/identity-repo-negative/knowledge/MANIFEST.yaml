@@ -1,0 +1,5 @@
+schema: identity-knowledge/v1
+as_of: "2026-09-06"
+# POINTERS ONLY. Node-local stores never enter a repository; this file names
+# where they live and what reads them.
+stores: []

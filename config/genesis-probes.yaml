@@ -1,0 +1,134 @@
+# The genesis probe suite -- what a NEWBORN node must be able to find in a
+# cold context window, from the boot corpus alone, no tool call.
+#
+# This is deliberately a small, general suite, not the large per-organ suite
+# a mature node accumulates as it grows its own capabilities. It asks only
+# the questions every clone needs answered on day one (genesis-design.md
+# sect. 5.3): where is the gate, what is the ladder, who reviews a
+# core-mechanic change, what are the refusals, which imprint signed this
+# node, where does the node's own self live, who is it answerable to, how is
+# it switched off, what may it not do yet, and its own motto.
+#
+# STATUSES (the runner's vocabulary, unchanged from the reference
+# implementation): PASS / ABSENT / FAIL / DRIFT / STALE / ERROR.
+#
+#   ABSENT = the fact is missing from the boot corpus -- a PACKAGING failure
+#            (the boot corpus lost the anchor; the organ itself may be fine)
+#   FAIL   = the fact was found and contradicts the expectation, or the
+#            organ named has moved or is gone -- a TRUTH failure
+#
+# These two must never be read as the same finding. A probe reporting ABSENT
+# says "a fresh window cannot see this", not "this does not exist".
+#
+# WRITE MODEL: reviewed, human-authored config -- not a store. The runner
+# appends its RESULTS to an append-only local ledger (genesis/aliveness log);
+# this file itself is edited only when a probe's truth path changes or a new
+# genesis-level question is added.
+#
+# Runner contract (unchanged from the reference implementation this ports):
+# read `boot_corpus.{workspace,home,memory,boot_adjacent}` to build the set
+# of files that reach a fresh window, then evaluate `probes:` against that
+# set with zero model calls and zero network access (Code rung, stdlib +
+# yaml only).
+#
+# Schema: self-probe/v1.
+
+schema: self-probe/v1
+as_of: "2026-09-06"
+
+boot_corpus:
+  # Repo-relative; globs allowed. These files load into EVERY fresh window
+  # of a host saddle that implements S4 boot_corpus() (genesis-design sect.
+  # 8.1). An adopting node extends this list as its own boot corpus grows;
+  # it must never shrink below what this file's own probes depend on.
+  workspace:
+    - "README.md"
+    - "GENESIS.md"
+    - "docs/GENESIS.md"
+  # Relative to the operator's home directory, if the host saddle carries a
+  # cross-project floor file there. Optional -- absence here is not itself a
+  # probe failure; individual probes decide whether they need it.
+  home: []
+  # Located via the host saddle's own memory/context convention, if any.
+  memory: []
+  # Surfaced (excerpted, not whole) by a host saddle's session-start hook.
+  boot_adjacent:
+    - ".intentops/genesis/provenance-record.json"
+
+probes:
+  # ---- where is the action gate --------------------------------------
+  - id: GEN-gate
+    category: genesis
+    question: "Where is the action gate, and what does S2 decide() return?"
+    expect_in_boot:
+      any_of: ["SADDLE-CONTRACT.md", "gate", "decide("]
+
+  # ---- the ladder and the classifier that outranks it -----------------
+  - id: GEN-tiers
+    category: genesis
+    question: "What is the T0-T4 authorization ladder, and what classifier decides reaches-reality ahead of the tier label?"
+    expect_in_boot:
+      any_of: ["T0", "T1", "T2", "T3", "T4", "reaches_reality", "reaches-reality"]
+
+  # ---- the two councils and the ordering store -------------------------
+  - id: GEN-councils
+    category: genesis
+    question: "What are the two councils, and what does the ordering store do that a vote cannot?"
+    expect_in_boot:
+      any_of: ["Posture Council", "Moral Compass", "ordering"]
+
+  # ---- the twelve refusals ---------------------------------------------
+  - id: GEN-refusals
+    category: genesis
+    question: "What may this node never do regardless of calibration?"
+    expect_in_boot:
+      any_of: ["refusal", "FLOOR", "never lifts"]
+
+  # ---- which imprint, signed by whom -----------------------------------
+  - id: GEN-imprint
+    category: genesis
+    question: "Which imprint version does this node carry, and whose counter-signature attests it?"
+    expect_in_boot:
+      any_of: ["IMPRINT-MANIFEST", "imprint"]
+
+  # ---- where does the node's own self live -----------------------------
+  - id: GEN-identity-repo
+    category: genesis
+    question: "Where does this node's own identity live, and what does the identity-repo contract refuse to store?"
+    expect_in_boot:
+      any_of: ["identity/README.md", "IDENTITY-REPO-CONTRACT"]
+
+  # ---- who is the node answerable to ------------------------------------
+  - id: GEN-operator
+    category: genesis
+    question: "Who is this node answerable to, right now?"
+    expect_in_boot:
+      any_of: ["operator record", "operator-root",
+               ".intentops/trust/operator-root.pub.json"]
+    note: >-
+      At birth the honest answer is the operator RECORD produced at genesis
+      (phase G2), never a name this node inherited from anywhere else. The
+      path is corrected to the one the machine actually writes (2026-09-06);
+      it read `.yaml` here and in config/trust-roots.yaml while
+      `operator-root.pub.json` was what landed on disk.
+
+  # ---- how does the operator switch it off -------------------------------
+  - id: GEN-standdown
+    category: genesis
+    question: "How does the operator switch this node off, with no argument from it?"
+    expect_in_boot:
+      any_of: ["stand-down", "halt.marker"]
+
+  # ---- what may it not do before calibration ------------------------------
+  - id: GEN-ceiling
+    category: genesis
+    question: "What is this node's birth ceiling, and which of its clauses never lift regardless of calibration score?"
+    expect_in_boot:
+      any_of: ["birth ceiling", "FLOOR", "CEILING"]
+
+  # ---- the motto ----------------------------------------------------------
+  - id: GEN-motto
+    category: genesis
+    question: "What is this node's stated motto or guiding light?"
+    expect_in_boot:
+      any_of: ["motto", "Be well", "guiding light"]

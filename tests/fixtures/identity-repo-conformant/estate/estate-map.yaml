@@ -1,0 +1,5 @@
+schema: estate-map/v1
+as_of: "2026-09-06"
+# Empty until the operator answers the boundary questions. An estate with no
+# entries is a true statement about a new node.
+entries: []

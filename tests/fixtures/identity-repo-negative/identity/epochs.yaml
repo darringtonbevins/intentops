@@ -1,0 +1,8 @@
+schema: identity-epochs/v1
+as_of: "2026-09-06"
+epochs:
+  - epoch: 1
+    began: "2026-09-06"
+    reason: "birth"
+# A stand-down is a dated event here. No reason field: if an operator switches
+# a node off, they do not owe the thing being switched off an explanation.

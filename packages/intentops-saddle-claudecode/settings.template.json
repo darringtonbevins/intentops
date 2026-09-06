@@ -1,0 +1,89 @@
+{
+  "_README": [
+    "IntentOps reference saddle -- hook wiring for this host runtime.",
+    "Copy the 'hooks' block below into the project's settings file, or copy this",
+    "whole file to .claude/settings.json in a project that has none. See the",
+    "package README for what each hook is and what breaks without it.",
+    "",
+    "Keys beginning with an underscore are comments. This host ignores unknown",
+    "keys; they are here because JSON has no comment syntax and a wiring file",
+    "nobody can read is a wiring file nobody checks.",
+    "",
+    "The four entries map one-to-one onto four of the five saddle operations:",
+    "  PreToolUse   -> S1 classify, S2 decide, S5 halt   (the only refusal site)",
+    "  PostToolUse  -> S3 record",
+    "  Stop         -> S3 record",
+    "  SessionStart -> S4 boot corpus",
+    "S2 is the one that cannot be satisfied by this file alone: it is a promise",
+    "the HOST makes, that a refusal from the pre-tool hook actually stops the",
+    "call. Removing the PreToolUse entry does not degrade the gate, it deletes it."
+  ],
+
+  "_INSTALL": [
+    "1. pip install -e packages/intentops-core -e packages/intentops-saddle-claudecode",
+    "2. merge the 'hooks' block below into .claude/settings.json",
+    "3. run: python -m intentops_saddle_claudecode.pre_tool --selftest",
+    "4. run the node's own birth check before trusting any of it",
+    "",
+    "Step 3 matters more than it looks. A hook that is wired but broken is",
+    "indistinguishable from a hook that is wired and permissive, because both",
+    "of them let everything through quietly."
+  ],
+
+  "_MATCHER": [
+    "The matcher is '*' on purpose. A gate that only inspects the tools someone",
+    "remembered to list is a gate with a hole shaped like everything else --",
+    "and the tool that is about to reach the world is exactly the one nobody",
+    "thought to add. Narrowing this is a decision to be argued for, not a",
+    "performance tweak."
+  ],
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -m intentops_saddle_claudecode.pre_tool",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -m intentops_saddle_claudecode.observe --event post_tool",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -m intentops_saddle_claudecode.observe --event stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -m intentops_saddle_claudecode.session_start",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

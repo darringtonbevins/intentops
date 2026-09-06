@@ -1,0 +1,294 @@
+# The exposure fence -- what must never appear in this repository.
+#
+# PURPOSE
+#   IntentOps is extracted from a private working estate. The extraction is
+#   only safe if the seam is MECHANICAL: a reviewer's attention is not an
+#   instrument, and "we were careful" is not a finding. This file is the
+#   machine-readable half of that seam, and `scripts/ops/exposure_gate.py` is
+#   the reader. CI runs the gate on every push; a hit is a red build.
+#
+# WHY THE DENYLIST IS HASHED, AND WHAT THAT DOES NOT MEAN
+#   A denylist written in plaintext would put every fenced token into the very
+#   repository the fence exists to keep them out of -- the gate would flag its
+#   own configuration, and the extraction would ship the words it was built to
+#   remove. So each entry carries the SHA-256 of the lowercased token instead.
+#
+#   This is a FENCE-COMPLIANCE measure, not secrecy. These are short dictionary
+#   and proper-noun words; anyone who wants them back can recover them with a
+#   wordlist in seconds. Nothing here should ever be described as protecting a
+#   secret. It exists so the repository can carry a working denylist without
+#   carrying the denied words.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. Locked fresh-read RMW is not needed: this
+#   file has exactly one writer (a reviewed commit) and no runtime writer. A
+#   token is ADDED by computing its digest outside this repository and pasting
+#   the digest; a token is never removed without a named, dated reason in the
+#   commit that removes it -- a shrinking fence is a decision, not a cleanup.
+#
+# BLIND SPOTS -- stated so nobody reads a green gate as a clean bill of health
+#   * A hash denylist finds only what it was told to look for. A private name
+#     nobody thought of is invisible to it, and a green run says nothing about
+#     that population. The three-clause form applies: I looked for these
+#     tokens and these shapes; my sensitivity is exact-token and regex; I found
+#     nothing; therefore nothing of THIS kind is present above THAT sensitivity.
+#   * Short tokens (< 6 characters) match whole words only. A short token
+#     embedded inside a longer proper noun is missed. The alternative floods
+#     every ordinary English word that happens to contain those letters, and a
+#     gate that fires constantly is a gate that gets routed around.
+#   * Long tokens match as substrings, so some ordinary English words WILL be
+#     flagged. That is the fail-toward-flagging direction and it is deliberate.
+#     Clear a genuine false positive with an allowed-line marker, never by
+#     deleting the entry.
+#   * The gate reads files. It does not read git history, and a token removed
+#     from the working tree may still sit in an earlier commit.
+#   * Binary files are skipped by extension and by a null-byte probe. A token
+#     inside an archive, an image, or a compiled artifact is not seen.
+#   * An exemption does not make the gate cleaner, it makes the gate BLINDER,
+#     and the two are indistinguishable from the outside because the number
+#     gets BETTER. This gate shipped that way for one revision: `allowed_paths`
+#     exempted the three files from every token, the scan read CLEAN across the
+#     repository, and the hits it was stepping over were in the most sensitive
+#     prose we ship -- found only once the exemption was narrowed to
+#     `allowed_path_tokens` and every list set empty (see that block below).
+#     Nothing looked wrong, because a shrinking denominator and a real repair
+#     both render as green. Before widening any exemption here, state how many
+#     files and how many token-checks it removes from the population, and read
+#     the next CLEAN verdict as covering only what remains.
+
+schema: exposure-fence/v1
+as_of: "2026-09-06"
+
+digest:
+  algorithm: sha256
+  encoding: ascii
+  case: lowercase
+  # No salt, deliberately: a salt would make the digests unverifiable by
+  # anyone reproducing this file, and it would buy no secrecy the paragraph
+  # above has not already disclaimed.
+  salted: false
+
+# Match modes, closed vocabulary. An undeclared mode is a HALT in the reader,
+# never a default of "probably substring".
+match_modes:
+  word: >-
+    the whole extracted word must equal the token. Used for tokens under six
+    characters, where substring matching collides with ordinary English.
+  substring: >-
+    any run of `length` characters inside an extracted word may equal the
+    token. Used for tokens of six characters or more.
+
+# Each entry: an opaque id (never the token, never a description that recovers
+# it), the digest, the token length, and the match mode.
+tokens:
+  - id: account-alias
+    sha256: "1266d62ef7f7a43a9b0c488ce113cc1b38c710398c05d628ec4c34c6ec8715fa"
+    length: 3
+    match: word
+  - id: vendor-c
+    sha256: "95b430664a34feb864b0abcc526c8134b3a3c47df2a0d851ef4de56fd15573e1"
+    length: 5
+    match: word
+  - id: os-account
+    sha256: "858710b4964dea83837a89f54d2f216e34c79bde6102bea07fa40c60b2dab682"
+    length: 5
+    match: word
+  - id: venture-a
+    sha256: "cff5b45ee02db093c00393e4c0f0c64e310a43bc06c2aba6518f02405a3c0e77"
+    length: 5
+    match: word
+  - id: vendor-feature-a
+    sha256: "5fbffcac35e3cf8b09495e3f20d28af24a8731045562a4a491fdab64ca99cb9f"
+    length: 5
+    match: word
+  - id: served-org-b
+    sha256: "b1a4b9accf59ff56635a88ef794239bc762315413e6f165d70075c41fad0c460"
+    length: 6
+    match: substring
+  - id: operator-family
+    sha256: "6dae0c100ddd13e71b680ca15a87da70506faa6094ef543f6aa48ebd1f642a5a"
+    length: 6
+    match: substring
+  - id: vendor-a
+    sha256: "4d0455d1af8b6c771497f18e898790d4460413bdbf4fbd5e33938ccd8f911031"
+    length: 6
+    match: substring
+  - id: person-a
+    sha256: "03105d508afac3108f115aef7a1c685b848f06631b81f2345535458c5937631f"
+    length: 6
+    match: substring
+  - id: venture-b
+    sha256: "d5007cc3f96992ad0c10be2fda2a18bc06d8fa1a5a1672e2f131682f47e28039"
+    length: 6
+    match: substring
+  - id: vendor-b
+    sha256: "fdf9e7a4c20d5f328183910ae6a32dfc075cf80ac035b3203e02b7b5fc1ecf9c"
+    length: 6
+    match: substring
+  - id: served-org-a
+    sha256: "9af0f4eaf4cf9e5bc12d4b8217435f860bc0782e892744d706ca9b3b2c7fb7a7"
+    length: 7
+    match: substring
+  - id: household-a
+    sha256: "6bdf0b2dfc2e0221960849943e884b3d4c6baf7cd25286caee29b9737ab3a343"
+    length: 7
+    match: substring
+  - id: vendor-d
+    sha256: "f208248e5969ffdb9c213257a843a0d8b8b437ae8265dd19a2398f3f212a1566"
+    length: 7
+    match: substring
+  - id: vendor-e
+    sha256: "e36e1d331a3e1cf78b71b01035960f4158b2fd24ebb7b8ce4dddac996f5d3e7f"
+    length: 8
+    match: substring
+  - id: personal-account
+    sha256: "d384bba539820f54ea88a05eef72b4c0fe812230d48ac1fb86871cc04fa75dab"
+    length: 8
+    match: substring
+  - id: venture-d
+    sha256: "3a962a1bef96ee9398d7155aee77c1ff39373b36b3953cebbd8bea9beeba51a9"
+    length: 8
+    match: substring
+  - id: venture-c
+    sha256: "b18e19754c0f6284109aa0061bbec2082f04e727150d682f10f6407db0a7d5b4"
+    length: 8
+    match: substring
+  - id: operator-given
+    sha256: "6bcd7e2c0269509d6621520d83d6d5e39741bcb791317f8aedf5e246bbd68238"
+    length: 10
+    match: substring
+  - id: host-a
+    sha256: "f8ea4a53be399fb6de01625f8fe0deb3f11f5611be2a7002149f927e159d7144"
+    length: 10
+    match: substring
+  - id: vendor-f
+    sha256: "e90f02d2eca983997fd7548b46ff99056e117f28dbe84c27932e30fa9bdfa8ea"
+    length: 12
+    match: substring
+
+# Shapes, not names. These need no hashing -- a regex for an address is not an
+# address. Each names the error it trades against (SIG-1 clause 7: a detector
+# states its operating point).
+patterns:
+  - id: email-shaped
+    regex: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+    catches: "a real correspondent, wherever an example was meant"
+    trades: "flags a genuine example address unless its domain is reserved below"
+  - id: guid-shaped
+    regex: "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b"
+    catches: "a tenant, subscription, or application identifier carried over from the estate"
+    trades: "flags a deliberately illustrative identifier; use a marker for those"
+  - id: record-key-shaped
+    regex: "\\b[0-9]{4,6}-[0-9]{3,6}\\b"
+    catches: "a composite record key of the private estate's shape, which resolves to a party"
+    trades: "flags some version ranges and numeric spans; markers clear those"
+  - id: private-key-block
+    regex: "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    catches: "key material pasted into the tree"
+    trades: "nothing -- there is no legitimate reason for this string to exist here"
+
+# Reserved-for-documentation domains (RFC 2606 / RFC 6761). An address at one
+# of these is an example by definition and never a correspondent.
+allowed_email_domains:
+  - example.com
+  - example.org
+  - example.net
+  - example.edu
+  - localhost
+  - invalid
+
+# The files that carry the first-instance node's own words or its attribution,
+# where a name is the point rather than a leak: the imprint is a first-person
+# text; the archetype catalogue reserves that first instance's entry by name;
+# the imprint manifest names the author whose counter-signature it defines; the
+# identity-repo README states which node was the first conformant instance; and
+# the identity-repo contract is the shape that instance satisfies.
+#
+# Corrected 2026-09-06: this list read three entries and named the CONTRACT as
+# the file identifying the first instance. It does not -- it says only "exists
+# privately". The sentence that names the instance lives in identity/README.md,
+# and the author attribution lives in the imprint manifest, so the config and
+# the tree disagreed. They now agree. The contract stays listed: it is the same
+# class of file and a later edit may legitimately name the instance there.
+allowed_paths:
+  - genesis/imprint/IMPRINT.md
+  - genesis/imprint/IMPRINT-MANIFEST.yaml
+  - genesis/imprint/archetypes/CATALOGUE.yaml
+  - identity/README.md
+  - docs/IDENTITY-REPO-CONTRACT.md
+
+# WHICH tokens each allowed path may carry -- and the answer today is NONE.
+#
+# This is deliberately not "allowed_paths are exempt from the whole denylist".
+# A whole-file exemption puts a blind spot over the most sensitive prose in the
+# repository, and it would look exactly like a clean scan: the gate would go
+# green because it stopped looking, not because there was nothing to find. That
+# is the failure mode of an untagged switch, where off-by-design and
+# off-by-neglect are indistinguishable from outside.
+#
+# The name those files legitimately carry is the first instance's OWN name,
+# which is not on the denylist above and therefore needs no exemption.
+# Everything on the denylist is a private-estate name, and none of these files
+# is a place for one. So every list here is empty, and the gate scans those
+# files like any other.
+#
+# An empty list means NO token is exempt for that path. There is no value that
+# means "all" -- if one existed, someone would eventually reach for it.
+# A path here that is not in `allowed_paths`, or a token id that is not in
+# `tokens`, is a HALT rather than a shrug.
+allowed_path_tokens:
+  genesis/imprint/IMPRINT.md: []
+  genesis/imprint/IMPRINT-MANIFEST.yaml: []
+  genesis/imprint/archetypes/CATALOGUE.yaml: []
+  identity/README.md: []
+  docs/IDENTITY-REPO-CONTRACT.md: []
+
+# A line carrying one of these markers is exempt. The marker is a TAG, not an
+# excuse: it must be followed by a reason on the same line, and the gate
+# refuses a bare marker -- an unexplained exemption is the untagged-switch
+# failure, where off-by-design and off-by-neglect look identical.
+# Note both entries carry a trailing reason. That is not decoration: the gate
+# treats these two lines as marker USES like any other, and a bare marker is
+# itself a finding -- so the file that declares the markers must satisfy the
+# rule it declares.
+allowed_line_markers:
+  - "exposure-gate: allow"    # declaring the marker here, not exempting a real hit
+  - "exposure-fence: allow"   # declaring the marker here, not exempting a real hit
+
+# Directories never walked. Build products, caches, and node-local runtime
+# state -- none of which is part of what is published.
+skip_dirs:
+  - ".git"
+  - ".github/ISSUE_TEMPLATE"
+  - ".intentops"
+  - ".pytest_cache"
+  - ".ruff_cache"
+  - ".venv"
+  - "__pycache__"
+  - "build"
+  - "dist"
+  - "node_modules"
+  - "site-packages"
+
+# Extensions never read as text. The gate also probes for a null byte, so an
+# unlisted binary is still skipped -- this list only saves the read.
+skip_extensions:
+  - ".gz"
+  - ".ico"
+  - ".jpeg"
+  - ".jpg"
+  - ".pdf"
+  - ".png"
+  - ".pyc"
+  - ".sig"
+  - ".tar"
+  - ".wasm"
+  - ".webm"
+  - ".whl"
+  - ".woff"
+  - ".woff2"
+  - ".zip"
+
+# Files larger than this are reported as UNSCANNED and counted in the
+# denominator -- never skipped silently. A refusal stays in the population.
+max_file_bytes: 4000000

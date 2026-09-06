@@ -1,0 +1,8 @@
+schema: identity-operator/v1
+as_of: "2026-09-06"
+# Filled at the consent and boundary sittings. No defaults: an unanswered slot
+# stays empty and is visible as empty.
+root_fingerprint: "sha256:PLACEHOLDER-OPERATOR-ROOT"
+address_as: ""
+notification_posture: ""
+timezone: ""

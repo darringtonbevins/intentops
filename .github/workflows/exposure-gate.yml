@@ -1,0 +1,90 @@
+# Nothing from the private estate this project was extracted from may be
+# reachable from anything published here.
+#
+# The gate reads config/exposure-fence.yaml and walks the tree looking for two
+# kinds of thing: NAMES, carried as digests rather than as words, and SHAPES --
+# an address, an identifier, a composite record key, a key header.
+#
+# The order of the steps below is the argument. The gate is made to prove it can
+# go RED on a planted hit before its verdict on the real tree is given any
+# weight, because a green result from an instrument that cannot fail is not
+# evidence of anything. A scan that always passes and a tree that is genuinely
+# clean produce identical output, and only one of them is good news.
+
+name: exposure-gate
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exposure-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fence:
+    name: no estate names or shapes in the tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the reader
+        # The gate needs no external search binary, so this is the whole of its
+        # dependency surface. A pure-Python walk gives the same verdict on a
+        # maintainer's laptop, here, and on a stranger's fresh clone -- which is
+        # the only way the verdict means the same thing in all three places.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: The gate must be able to fire
+        # Fifteen checks, each making one verdict path fire: found as a word,
+        # found inside a word, found as a shape, cleared by an explained
+        # exemption, refused as a bare one, kept in the denominator when a file
+        # cannot be read, and halted when the fence itself is unusable.
+        run: python scripts/ops/exposure_gate.py --selftest
+
+      - name: Scan the tree
+        run: python scripts/ops/exposure_gate.py
+
+      - name: What a green result here does not mean
+        if: success()
+        run: |
+          echo "The gate found none of the names it declares and none of the"
+          echo "shapes it declares, over the working tree, at exact-digest and"
+          echo "regex sensitivity. That is the whole claim."
+          echo ""
+          echo "It is NOT a statement about a private name nobody thought to"
+          echo "add to the fence -- that population was never looked at. It is"
+          echo "NOT a statement about git history, which the gate does not"
+          echo "read. And it is NOT a statement about binaries or archives,"
+          echo "which are skipped."
+          echo ""
+          echo "Before this repository is ever made public, those three gaps"
+          echo "are answered by review, not by this badge."
+
+      - name: What a red result means
+        if: failure()
+        run: |
+          echo "::error::A fenced name or shape is present in the tree."
+          echo "Each hit names a rule id and a line, and never echoes the"
+          echo "matched text -- this log is a public surface, and a gate that"
+          echo "printed the word back would republish the thing it caught."
+          echo ""
+          echo "Fix the line. If it is a genuine false positive, clear it with"
+          echo "an allow marker AND a reason on the same line; a bare marker is"
+          echo "itself a finding, because an unexplained exemption makes"
+          echo "off-by-design and off-by-neglect look identical."
+          echo ""
+          echo "Do not remove an entry from config/exposure-fence.yaml to make"
+          echo "this pass. A shrinking fence is a decision, and it belongs in a"
+          echo "commit message that says so."

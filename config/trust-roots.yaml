@@ -1,0 +1,127 @@
+# IntentOps genesis trust roots -- PUBLIC MATERIAL ONLY.
+# A private key appearing anywhere in this file is a P0 incident, not a bug.
+#
+# STATUS: every root below is `status: proposed`. G1 (the offline provenance
+# check run at every boot, see docs/GENESIS.md) HALTS on every root in this
+# file until the release root is minted in the operator's own ceremony
+# (trust-root-design.md sect. 7 -- a witnessed, offline, irreversible act that
+# only the project's human operator may perform; it is never run from a loop
+# tick, a workflow leg, a subagent, or CI). Do not remove `status: proposed`
+# by hand: the ceremony tooling flips it, together with the real key material,
+# in one signed, reviewed change.
+#
+# Every value tagged PLACEHOLDER below is deliberately invalid -- it will not
+# parse as a real PEM key, DER fingerprint, or DID, and it must never be
+# treated as one. This file has no `.sig` yet for the same reason: nothing
+# here has been signed by anything.
+#
+# WRITE MODEL: single-writer, ceremony-only. This file is edited by the root
+# minting ceremony (trust-root-design.md sect. 7) and by scheduled rotation
+# (sect. 8.1), never by routine code. No process may write it programmatically
+# outside those two paths.
+#
+# Schema: trust-roots/v1. See docs/reference/trust-root-design.md (ported)
+# sect. 3.2 for the full field reference and sect. 3.3 for a longer worked
+# example. The authority-string one-liner format, for humans comparing two
+# values by eye:
+#   intentops-root:v1:sha256:<64hex>:did:key:z<base58btc>
+
+schema: trust-roots/v1
+as_of: "2026-09-06"
+
+# Must equal ROOT_FINGERPRINT in the compiled pin (packages/intentops-core,
+# genesis/trust_pin module) once the ceremony has run. Left as an explicit
+# placeholder rather than omitted, so the pin-check step (G1.2) has something
+# concrete to compare against and fail loudly on, instead of skipping itself
+# on an absent field.
+pinned_fingerprint: "sha256:PLACEHOLDER"
+
+roots:
+  - id: R-INTENTOPS
+    role: release_root
+    status: proposed          # flips to `active` only after the ceremony
+    algorithm: ed25519
+    public_key_pem: "PLACEHOLDER-NOT-A-KEY"
+    fingerprint: "sha256:PLACEHOLDER"
+    did: "did:key:PLACEHOLDER"
+    certificate_pem: null      # optional X.509 profile; his ruling, open question
+    key_id: "PLACEHOLDER16"
+    valid_from: "2026-01-01"   # PLACEHOLDER
+    valid_until: "2036-01-01"  # PLACEHOLDER -- 10y validity once minted
+    issued_by: self
+    signs: [trust_roots_file, revocation_list]
+    revocation:
+      list_url: null           # decided at ceremony time (open question: domain vs. git-hosted list)
+      list_path: "config/trust-revocation.json"
+      expiry_is_revocation: false
+    rotation:
+      supersedes: null
+      superseded_by: null
+      overlap_until: null
+    ceremony:
+      minted_at: null           # null until the ceremony runs -- never a placeholder date once real
+      witnessed_by: null
+      record: "docs/reference/ceremonies/R-INTENTOPS-genesis.md"
+    evidence: "[PLACEHOLDER] no ceremony has occurred; this entry is a shape, not a key"
+
+  - id: I-INTENTOPS-REL-2026
+    role: release_intermediate
+    status: proposed
+    algorithm: ed25519
+    public_key_pem: "PLACEHOLDER-NOT-A-KEY"
+    fingerprint: "sha256:PLACEHOLDER"
+    did: "did:key:PLACEHOLDER"
+    certificate_pem: null
+    key_id: "PLACEHOLDER16"
+    valid_from: "2026-01-01"   # PLACEHOLDER
+    valid_until: "2027-04-01"  # PLACEHOLDER -- 15 months, 3-month overlap by design
+    issued_by: R-INTENTOPS
+    signs: [invariant_bundle, imprint_manifest, archetype_catalogue, release_artifact]
+    revocation:
+      list_url: null
+      list_path: "config/trust-revocation.json"
+      expiry_is_revocation: true   # an offline clone revokes this by expiry alone
+    rotation:
+      supersedes: null
+      superseded_by: null
+      overlap_until: null
+    ceremony:
+      minted_at: null
+      witnessed_by: null
+      record: "docs/reference/ceremonies/I-INTENTOPS-REL-2026.md"
+    evidence: "[PLACEHOLDER] signed alongside R-INTENTOPS in the same sitting, once that sitting occurs"
+
+# `signs` closed vocabulary (an undeclared value is a hard exit, never a
+# default of everything-applies -- no-silent-failures.md rule 6):
+#   invariant_bundle | imprint_manifest | archetype_catalogue | release_artifact
+#   | trust_roots_file | revocation_list | node_identity_cert | alignment_record
+#   | ordering_ruling | core_mechanic_change
+
+# `role` closed vocabulary: release_root | release_intermediate | attribution
+#   | operator_root
+# An operator's own root (R-OPERATOR) is never listed here -- it does not
+# exist until the node's own genesis (phase G2) and is written locally to
+# .intentops/trust/operator-root.pub.json (schema operator-root/v1, one entry,
+# issued by itself).
+#
+# The name is corrected here (2026-09-06): this comment said
+# `.intentops/trust/operator-root.yaml`, the boot probe said the same, and the
+# genesis machine wrote `.pub.json`. Three carriers, two answers, and the one a
+# reader would have looked for did not exist. The written name is authoritative
+# because the `.pub` segment is load-bearing: that directory holds PUBLIC
+# projections only, and a private key appearing in it is an incident. The
+# artifact is also not a trust-roots document -- it carries its own
+# `operator-root/v1` schema and one entry -- so naming it after this file's
+# schema was wrong twice over.
+
+trust_policy:
+  unsigned_bundle: refuse        # never "warn", never "allow"
+  crypto_unavailable: halt
+  unknown_root: refuse
+  expired_root: refuse
+  clock_skew_tolerance: 24h
+  # A permissive override exists for development only, and is deliberately
+  # expensive: interactive-only (refuses if stdin is not a TTY), requires the
+  # operator to type the exact phrase "boot unverified", and opens a T3 LOTO
+  # tagout before boot completes. See docs/GENESIS.md.
+  override_env: INTENTOPS_GENESIS_UNVERIFIED

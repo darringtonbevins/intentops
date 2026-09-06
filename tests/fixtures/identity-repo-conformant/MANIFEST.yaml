@@ -1,0 +1,82 @@
+# FICTIONAL. Nothing below is a real key, node, operator or person.
+schema: identity-repo/v1
+contract_version: "1.0"
+as_of: "2026-09-06"
+
+intentops:
+  requires: ">=0.1,<0.2"
+  pinned: "0.1.0"
+  release_root_fingerprint: "sha256:PLACEHOLDER-RELEASE-ROOT"
+  validated_at: "2026-09-06"
+
+identity:
+  # A designation, never a name. A name is ratified by the operator, later.
+  designation: "node-0f1e2d3c"
+
+operator:
+  root_fingerprint: "sha256:PLACEHOLDER-OPERATOR-ROOT"
+
+# Empty means "not yet bound". An absent key and an empty one are different
+# claims, so the key is always present.
+bound_node: "node-0f1e2d3c"
+
+binding:
+  precedence: ["environment", "genesis-argument", "node-config"]
+  default: null
+
+lineage: []
+
+falsifier:
+  reopens_when: >
+    the operator root is superseded, the framework pin moves outside the
+    declared range, or this repository is bound to a different node
+
+members:
+  - path: "identity/identity.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "identity/consent.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "identity/epochs.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "identity/operator/operator.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "wisdom/orderings.jsonl"
+    write_model: append-only-journal
+    validator: "intentops_core.wisdom.ordering"
+  - path: "wishes/REGISTER.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/wish_register_check.py"
+  - path: "twin"
+    write_model: per-item-files
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "continuity/memory"
+    write_model: per-item-files
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "conscience/core-review/ledger.jsonl"
+    write_model: append-only-journal
+    validator: "intentops_core.governance.values_council"
+  - path: "conscience/loto/LEDGER.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/ops/loto_check.py"
+  - path: "conscience/people/ledger.jsonl"
+    write_model: append-only-journal
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "estate/estate-map.yaml"
+    write_model: locked-whole-file
+    validator: "scripts/estate/estate_manifest_check.py"
+  - path: "intelligence"
+    write_model: per-item-files
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "knowledge/MANIFEST.yaml"
+    write_model: pointer-only
+    validator: "scripts/identity/identity_repo_check.py"
+  - path: "trust"
+    write_model: generated-projection
+    validator: "scripts/ops/trust_material_check.py"
+  - path: ".gitignore"
+    write_model: locked-whole-file
+    validator: "scripts/ops/trust_material_check.py"

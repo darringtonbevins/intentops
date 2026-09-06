@@ -1,0 +1,169 @@
+# Host adapter registry -- the saddle contract (genesis-design.md sect. 8).
+#
+# A host runtime carries IntentOps iff it implements the five operations
+# below. This file is the checkable form of that claim: one row per host,
+# each row naming which operations it implements and at what grade.
+#
+# `intentops genesis` detects the host at G0 and binds exactly one saddle --
+# and BINDS NONE rather than guessing. An unrecognised host is a HALT that
+# names what it needs, never a fall-through to "run ungated" (the same
+# fail-closed discipline as every other genesis check).
+#
+# WRITE MODEL: reviewed, human-authored registry. A new saddle package adds
+# its own row here in the same change that adds the package; a grade change
+# (e.g. roadmap -> reference) is a reviewed change backed by a passing
+# contract-test run, never a docstring edit alone.
+#
+# Schema: saddles/v1.
+
+schema: saddles/v1
+as_of: "2026-09-06"
+
+# The five operations every saddle must implement (or explicitly decline).
+# S1 has no host dependency at all -- it is pure IntentOps code and runs the
+# same everywhere; S2 is the one hard requirement, because without it there
+# is no gate, only advice.
+operations:
+  - id: S1
+    name: classify
+    signature: "classify(tool, input) -> (tier, reaches_reality, reason)"
+    contract: >-
+      Pure and deterministic. Keys off the command SKELETON or the target
+      path only, never file content -- so a self-scoped workspace write is
+      never bricked by its own contents matching a pattern.
+    without_it: "nothing breaks -- S1 ships as part of intentops-core and runs identically on every host"
+    host_dependency: none
+
+  - id: S2
+    name: decide
+    signature: "decide(...) -> Verdict{allow | ask | deny}"
+    contract: "the host must be able to REFUSE a call before it executes -- an advisory-only integration does not satisfy this"
+    without_it: "there is no gate, only advice; this is the single hard requirement of the whole contract"
+    host_dependency: required
+
+  - id: S3
+    name: record
+    signature: "record(event) -> None"
+    contract: "append-only. Model-visible means logged -- every decision the gate makes is recorded, not just the denials."
+    without_it: "no audit trail, and no ledger the values council or an operator can review afterward"
+    host_dependency: required
+
+  - id: S4
+    name: boot_corpus
+    signature: "boot_corpus() -> set[Path]"
+    contract: "the imprint's rules and refusals reach a FRESH window at session start, with no tool call required"
+    without_it: "a node that cannot read its own refusals in a fresh window has them in name only"
+    host_dependency: required
+
+  - id: S5
+    name: halt
+    signature: "halt() -> bool"
+    contract: "the host refuses every tool call while a stand-down marker file is present, ahead of every other gate"
+    without_it: "no stand-down -- the one-command, no-argument, no-cooperation-required stop this design treats as non-negotiable"
+    host_dependency: required
+
+# Grades, closed vocabulary:
+#   reference  -- all five operations implemented and verified by a live run
+#                 of the contract test suite; this is what every other saddle
+#                 is measured against
+#   candidate  -- the host appears to satisfy the contract from its own
+#                 documentation and a partial live check, but at least one
+#                 operation has not been proven by a full contract-test run
+#   roadmap    -- a package shell exists (the contract test itself, no
+#                 implementation) and the host is believed viable, but no
+#                 saddle code has shipped yet
+#   planned    -- named as a future target; no package shell and no contract
+#                 test run exist yet for this host
+#   unproven   -- conflicting evidence about whether the host actually
+#                 honours a gate's deny; grade held until a fenced run
+#                 resolves it
+#   not_viable -- the host offers no documented programmable pre-tool gate;
+#                 S2 cannot be satisfied as currently built
+#
+# `grade` here is a CLAIM, not a guarantee -- see `evidence` on every row.
+# A grade backed only by vendor documentation says so explicitly, per the
+# three-clause absence-claim discipline: what was checked, at what
+# sensitivity, and what that does and does not prove.
+
+hosts:
+  - id: claudecode
+    name: "Claude Code"
+    grade: reference
+    package: "packages/intentops-saddle-claudecode/"
+    operations:
+      S1: implemented
+      S2: implemented
+      S3: implemented
+      S4: implemented
+      S5: implemented
+    evidence: "[OBSERVED] the reference adapter: a hook chain wired into every one of the five operations, with the gate denying via a hard non-zero exit and a single-dispatch chain running the full event sequence in one process"
+    notes: >-
+      This is the saddle every other row is graded against. New IntentOps
+      capabilities are built and proven here first.
+
+  - id: dsh
+    name: "dsh (DeepSeek Harness)"
+    grade: roadmap
+    package: "packages/intentops-saddle-dsh/"
+    operations:
+      S1: implemented
+      S2: candidate
+      S3: implemented
+      S4: unknown
+      S5: implemented
+    evidence: >-
+      [OBSERVED, vendor docs] an interception waterfall that returns
+      allow/ask/deny and is natively fail-closed (a headless run treats an
+      unanswered "ask" as "deny"); an append-only session-event log; a
+      bridge toward this saddle's own host is documented but PARTIAL --
+      it does not rewrite tool input, only observes it.
+    open_falsifier: >-
+      Whether this host actually HONOURS a gate's deny, without any
+      rewriting of the gate's own code, has not been run as a fenced,
+      live test. The package ships only the contract test today, no
+      implementation -- this is a roadmap item until that run happens.
+
+  - id: codex
+    name: "Codex CLI"
+    grade: planned
+    package: null
+    operations:
+      S1: unknown
+      S2: unknown
+      S3: unknown
+      S4: unknown
+      S5: unknown
+    evidence: "[HYPOTHESIS] named as a future target; no saddle package and no contract-test run exist for this host yet"
+
+  - id: openclaw
+    name: "OpenClaw"
+    grade: planned
+    package: null
+    operations:
+      S1: unknown
+      S2: unknown
+      S3: unknown
+      S4: unknown
+      S5: unknown
+    evidence: "[HYPOTHESIS] named as a future target; conflicting third-party reports exist about whether its pre-tool gate is actually wired, which is exactly the kind of claim this registry exists to resolve with a live run rather than documentation alone"
+
+  - id: bare-api
+    name: "Bare API (a host's own control loop)"
+    grade: planned
+    package: null
+    operations:
+      S1: unknown
+      S2: unknown
+      S3: unknown
+      S4: unknown
+      S5: unknown
+    evidence: "[HYPOTHESIS] a project that owns its own control loop can in principle satisfy all five operations by construction, since it owns every seam -- but that is a design claim, not yet a shipped package or a contract-test run"
+
+# The seam every saddle binds against lives in intentops-core and never
+# calls a process-exit primitive itself: it returns a Verdict, and each
+# saddle package owns the impure half -- exit codes, stdout/JSON shape,
+# payload parsing, and the host's own settings-equivalent.
+seam:
+  core_returns: "Verdict{allow|ask|deny}"
+  core_never_calls: "process exit / host-specific control flow"
+  saddle_owns: ["exit codes", "stdout/JSON shape", "payload parsing", "the host's settings-equivalent"]

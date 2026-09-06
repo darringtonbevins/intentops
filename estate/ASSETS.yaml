@@ -1,0 +1,41 @@
+# ASSETS -- what the estate HAS.
+#
+# GENESIS SHIPS THIS EMPTY. A new node owns nothing yet, and saying so is the
+# honest state. A MISSING file is a HALT (estate/README.md).
+#
+# WRITE MODEL: single writer -- the operator, by hand or through an explicit
+# generator, one process at a time. The loader never writes this file.
+#
+# CLOSED VOCABULARY. An undeclared value is a HALT:
+#
+#   kind: repo | document | dataset | model | device | account | domain
+#         | credential-ref | other
+#
+#   `credential-ref` is a REFERENCE to where a credential lives -- a name in a
+#   vault, a keyring entry. `location` is a URI or a path and is NEVER a value:
+#   an asset manifest that carries a secret has published it.
+#
+# REQUIRED PER ENTRY: id, name, kind, estate, owner, sensitivity, location,
+#                     as_of, evidence
+#
+#   estate      -- an `id` declared in ESTATE-MAP.yaml
+#   sensitivity -- free text on a new node; a node that adopts a ring taxonomy
+#                  narrows it to that taxonomy's closed set and says so here
+#   evidence    -- how this entry is known to be true (a command, a URL, a
+#                  document). An entry with no evidence is a belief, not a record
+#
+# EXAMPLE ENTRY (commented out; the names are fictional):
+#
+# - id: "asset-northwind-site"
+#   name: "Northwind Labs marketing site"
+#   kind: repo
+#   estate: "northwind-labs"
+#   owner: "the operator"
+#   sensitivity: "public"
+#   location: "https://example.invalid/northwind/site"
+#   as_of: "2026-09-06"
+#   evidence: "cloned and built locally on 2026-09-06"
+
+schema: estate-assets/v1
+as_of: "2026-09-06"
+entries: []

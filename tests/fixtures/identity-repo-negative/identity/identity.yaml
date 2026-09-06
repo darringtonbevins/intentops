@@ -1,0 +1,8 @@
+schema: identity/v1
+as_of: "2026-09-06"
+designation: "node-0f1e2d3c"
+node_id: "node-0f1e2d3c"
+did: "did:key:PLACEHOLDER"
+epoch: 1
+# A node is born with a designation. An archetype is chosen, never inherited.
+archetype: null

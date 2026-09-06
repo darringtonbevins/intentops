@@ -1,0 +1,76 @@
+# The ordinary build: does the code import, and do the tests pass.
+#
+# This is deliberately the SMALLEST of the four workflows. It answers "is the
+# tree healthy", and it answers nothing about whether the tree is safe to
+# publish -- that is exposure-gate.yml -- or whether the gate can actually
+# refuse -- that is contract-tests.yml. Keeping them separate means a red build
+# says which question failed.
+#
+# Every step here fails loudly. There is no `continue-on-error` and no `|| true`
+# anywhere in this file, on purpose: a step that is allowed to fail quietly is
+# a step nobody reads the output of.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor the project declares. 3.12 is here so that a
+        # version-specific break is caught by CI rather than by the first
+        # stranger who clones this on a newer interpreter.
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the core package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Install the reference saddle
+        # --no-deps because its one real dependency is the core, which was just
+        # installed from this tree as editable. Letting the resolver reach out
+        # for a published `intentops` would test a package we did not build.
+        run: pip install -e packages/intentops-saddle-claudecode --no-deps
+
+      - name: Prove the gate imports without a host
+        # The core must stand up on its own. If this step needs a saddle to
+        # import, the package split has already been broken and every later
+        # green result is measuring something else.
+        run: python -c "import intentops_core.gate as g; print(sorted(g.__all__))"
+
+      - name: Run the test suite
+        run: pytest -q
+
+      - name: Run every module selftest
+        # A detector that has never fired is indistinguishable from a broken
+        # one. The suite calls most of these already; running them here means
+        # a selftest that stops firing is visible as its own red step rather
+        # than buried in a test summary.
+        run: |
+          python -m intentops_saddle_claudecode.pre_tool --selftest
+          python -m intentops_saddle_claudecode.observe --selftest
+          python -m intentops_saddle_claudecode.session_start --selftest
+          python scripts/ops/exposure_gate.py --selftest

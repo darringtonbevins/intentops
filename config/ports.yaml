@@ -1,0 +1,80 @@
+# IntentOps -- generic port allocation for the public seed.
+#
+# This is a deliberately SMALL, GENERIC subset -- only the categories a fresh
+# clone actually needs a default for: the governed tool gateway, the API
+# server, an embedding endpoint, a rerank endpoint, a local-inference
+# endpoint, and a local vector store. None of these numbers are load-bearing
+# outside this repo; they exist so a clone has a working default and a
+# single place to change it, not because the numbers themselves mean
+# anything. Every port is loopback-only by default.
+#
+# WRITE MODEL: reviewed, human-authored registry (kind: registry in
+# capability-kinds.yaml). Not a store -- a project extends this file as it
+# adds services, never by hardcoding a port literal elsewhere.
+#
+# Schema: ports/v1.
+
+schema: ports/v1
+as_of: "2026-09-06"
+
+meta:
+  policy:
+    default_binding: "127.0.0.1"
+    range_start: 8000
+    range_end: 8099
+
+# Status, closed vocabulary: active | optional | on-demand | reserved
+services:
+  gateway:
+    port: 8000
+    env_var: INTENTOPS_GATEWAY_PORT
+    protocol: tcp
+    description: "the governed tool gateway -- the single seam every tool call passes through before it reaches a backend"
+    status: active
+    binding: "127.0.0.1"
+
+  api:
+    port: 8001
+    env_var: INTENTOPS_API_PORT
+    protocol: tcp
+    description: "the node's own API server, for anything a saddle or a UI needs beyond the gateway"
+    status: active
+    binding: "127.0.0.1"
+
+  vector_store:
+    port: 8002
+    env_var: INTENTOPS_VECTOR_PORT
+    protocol: tcp
+    description: "local vector store for semantic lookup (bias-LEFT rung 3 of minimize-llm-dependency: local embeddings before any model call)"
+    status: optional
+    binding: "127.0.0.1"
+
+  local_inference:
+    port: 8003
+    env_var: INTENTOPS_LOCAL_INFERENCE_PORT
+    protocol: tcp
+    description: "local LLM inference endpoint (bias-LEFT rung 4: local generation/judgment before any service-model call)"
+    status: optional
+    binding: "127.0.0.1"
+
+  embed:
+    port: 8004
+    env_var: INTENTOPS_EMBED_PORT
+    protocol: tcp
+    description: "local embedding endpoint, separate from local_inference so it can run on a lighter accelerator or stay always-on while generation stays on-demand"
+    status: optional
+    binding: "127.0.0.1"
+
+  rerank:
+    port: 8005
+    env_var: INTENTOPS_RERANK_PORT
+    protocol: tcp
+    description: "local cross-encoder rerank endpoint -- emits relevance scores only, shares no vector space with the embed endpoint above"
+    status: optional
+    binding: "127.0.0.1"
+
+# A generated env file (e.g. `intentops genesis --write-port-env`) should
+# write exactly the env_var/port pairs above; nothing here is meant to be
+# read as a live health claim -- see the `service` kind in
+# capability-kinds.yaml, whose `monitored` accounting is what actually
+# answers "is this running right now".

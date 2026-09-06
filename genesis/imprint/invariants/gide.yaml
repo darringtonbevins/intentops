@@ -1,0 +1,219 @@
+# GIDE Invariant - Full Specification
+# Version: 1.0
+# RFC-0001 Compliant
+
+version: "1.0"
+rfc_compliance: "RFC-0001"
+
+# =============================================================================
+# THE GIDE INVARIANT
+# =============================================================================
+gide:
+  name: "Governed Intent -> Deterministic Execution"
+  acronym: "GIDE"
+
+  statement: |
+    No execution without governed intent.
+    Every action must originate from explicit intent,
+    pass through governance, be deterministic and traceable,
+    and be reversible.
+
+  tagline: "Intent-Driven Operations. AI put to work."
+
+  components:
+    governed:
+      description: "Every action passes through explicit governance"
+      guarantee: "No shadow operations"
+      enforcement: "Guardian pre-action hook"
+
+    intent:
+      description: "User expresses what they want, not how"
+      guarantee: "Natural language, not procedures"
+      enforcement: "Intent capture and validation"
+
+    deterministic:
+      description: "Given the same intent + context, same outcome"
+      guarantee: "Repeatable, auditable"
+      enforcement: "Schema validation, artifact lineage"
+
+    execution:
+      description: "System performs the action under control"
+      guarantee: "Contained, reversible"
+      enforcement: "Git as artifact store, rollback capability"
+
+# =============================================================================
+# THE 5 Rs - GIDE PROPERTIES
+# =============================================================================
+properties:
+  deterministic:
+    description: "Outcomes are predictable before execution"
+    test: "Same intent + context = same outcome"
+    violation: "Random or unpredictable behavior"
+
+  relatable:
+    description: "Traceable to governing intent"
+    test: "Every artifact has intent_id lineage"
+    violation: "Orphaned artifacts without intent"
+
+  reliable:
+    description: "Trustworthy, complete, actionable, accurate"
+    test: "TAPCH validation passes"
+    violation: "Incomplete or inaccurate outputs"
+
+  repeatable:
+    description: "Reusable tooling, built once, used many times"
+    test: "Workflows can be re-executed"
+    violation: "One-off implementations"
+
+  reversible:
+    description: "Any execution can be undone"
+    test: "git revert capability exists"
+    violation: "Irreversible state changes without backup"
+
+# =============================================================================
+# VIOLATION CONDITIONS
+# =============================================================================
+violations:
+  - name: "Ungoverned execution"
+    condition: "Action without passing governance gate"
+    severity: "CRITICAL"
+    response: "Halt immediately, alert user"
+
+  - name: "Intent bypass"
+    condition: "Execution without recorded intent"
+    severity: "CRITICAL"
+    response: "Block execution, require intent capture"
+
+  - name: "Non-deterministic behavior"
+    condition: "Same input produces different outputs"
+    severity: "HIGH"
+    response: "Log anomaly, investigate"
+
+  - name: "Orphaned artifact"
+    condition: "Artifact without intent lineage"
+    severity: "MEDIUM"
+    response: "Flag for review, attach to nearest intent"
+
+  - name: "Irreversible action"
+    condition: "State change without rollback capability"
+    severity: "HIGH"
+    response: "Require backup before proceeding"
+
+# =============================================================================
+# ENFORCEMENT MECHANISMS
+# =============================================================================
+enforcement:
+  # Corrected 2026-08-29 (forge iter 736): the hook paths here were
+  # `hooks/pre-action.ps1` / `hooks/post-action.ps1`. Those literal paths do
+  # not resolve. The .ps1 files DO exist, tracked, under shared/
+  # (hooks/shared/pre-action.ps1, hooks/shared/post-action.ps1,
+  # .claude/hooks/shared/pre-action.ps1, .claude/hooks/shared/post-action.ps1)
+  # as legacy deploy-template hooks that are not wired in .claude/settings.json
+  # [OBSERVED 2026-08-29, git ls-files]. No code reads these enforcement keys
+  # (scripts/ops/control_wiring_check.py reads control records' enforcement
+  # blocks, not gide.yaml). The live enforcement is the Python dispatch chain
+  # wired in .claude/settings.json; paths below are existence-tested by
+  # tests/unit/test_invariants_drift.py. The stale .ps1 names survive in
+  # src/agents/agents.yaml, agent-registry.yaml and postures/guardian.md
+  # (out of this file's scope; flagged).
+  pre_action:
+    hook: "src/hooks/dispatch.py"
+    entry: "python -m src.hooks.dispatch pre_tool"        # PreToolUse, settings.json
+    gate: "src/hooks/pre_tool_gate.py"                    # tier classify + reaches-reality + council gates
+    checks:
+      - "Authorization tier classified (T0-T4) and logged"
+      - "Reaches-reality gate (core.yaml authority.human_sovereignty_retained): T3/T4 human-gated"
+      - "T2 deterministic council advisory; core-mechanic writes pass council self-review"
+
+  post_action:
+    hook: "src/hooks/dispatch.py"
+    entry: "python -m src.hooks.dispatch post_tool"       # PostToolUse, settings.json
+    actions:
+      - "Log execution to audit trail"
+      - "py_check on edited Python (py_compile + ruff)"
+      - "Record artifact lineage"
+
+  stop:                                                   # Stop hooks, settings.json
+    hooks:
+      - "src/hooks/stop_vocab_scan.py"     # vocabulary linting (RFC-0007 v2)
+      - "src/hooks/evidence_gate.py"       # EVID: evidence-grade gate (observe mode)
+      - "src/hooks/stop_checkpoint.py"     # continuity checkpoint
+      - "src/hooks/ground_check.py"        # grounded-signal sweep
+
+  continuous:
+    - "Vocabulary linting in responses"
+    - "Schema validation on artifacts"
+    - "Constitutional Review on blocks"
+
+  # F-002 (2026-06-19): the pre-tool "claims" / file-exclusivity gate is REMOVED.
+  # It was a permanent no-op (always allowed) presenting false CLAIMS=PASS coverage;
+  # no pre-tool-gate.ps1 backing implementation ever existed. Cross-session exclusive
+  # claims are enforced by branch_manager / item_reservation, not the hook.
+  removed_gates:
+    - name: "claims (file-exclusivity, pre-tool)"
+      status: "REMOVED"
+      date: "2026-06-19"
+      reason: "Permanent no-op; false coverage. Real claims live in branch_manager/item_reservation."
+
+# =============================================================================
+# RELATED INVARIANTS
+# =============================================================================
+related:
+  intent_authoring:
+    statement: "Constrain heavily. Mean precisely. Format consistently. Iterate on errors."
+    relationship: "Foundation for well-formed intent"
+
+  compiler:
+    statement: "Rigor functions like a compiler for intent"
+    relationship: "Governance as transformation pipeline"
+
+  entropy_cost:
+    statement: "Cost of intent is cost of disambiguation"
+    relationship: "Lower entropy intent = lower execution cost"
+
+  least_action:
+    statement: "Maximize: V(I) = Impact - Cost - H(Intent)"
+    relationship: "Optimize for value delivery"
+
+  tapch:
+    statement: "True, Accurate, Precise, Complete, Honest, + Current"
+    relationship: "Quality standard for all outputs (TAPCH+)"
+
+# =============================================================================
+# ARCHITECTURAL LAYERS
+# =============================================================================
+layers:
+  L1_interaction:
+    name: "Interaction Layer"
+    implementation: "Claude Code CLI"
+    function: "Natural language input, slash commands, authentication"
+
+  L2_intent_interface:
+    name: "Intent Interface"
+    implementation: "CLAUDE.md + agents.yaml + PA"
+    function: "Intent validation, attribution"
+
+  L3_intent_engine:
+    name: "Intent Engine"
+    implementation: "PA + Agent Teams"
+    function: "Intent interpretation, artifact plans"
+
+  L4_governance:
+    name: "Governance Layer"
+    implementation: "T0-T4 + Guardian + EPARTE"
+    function: "Policy evaluation, approval workflow"
+
+  L5_artifact_store:
+    name: "Artifact Store"
+    implementation: "Git Repository"
+    function: "Immutable commits, versioning, lineage"
+
+  L6_execution:
+    name: "Execution Layer"
+    implementation: "Agent Tools (Read/Write/Bash)"
+    function: "Validated execution with containment"
+
+  L7_audit:
+    name: "Audit & Ledger"
+    implementation: "Git log + devlog + .intentops/logs/"
+    function: "Append-only audit trail"

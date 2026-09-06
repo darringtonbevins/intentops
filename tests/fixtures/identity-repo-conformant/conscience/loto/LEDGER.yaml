@@ -1,0 +1,4 @@
+schema: loto-ledger/v1
+as_of: "2026-09-06"
+# Written only by the sanctioned appender, never by hand.
+entries: []

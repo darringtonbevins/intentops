@@ -1,0 +1,63 @@
+# Wish register -- TEMPLATE
+#
+# Copied by genesis into a node's identity repository as
+# `identity/wishes/REGISTER.yaml`. It ships EMPTY AND VALID: a node at birth has
+# wished for nothing, and that is a true statement about a new node. An empty
+# `wishes` list passes `scripts/wish_register_check.py`; a MISSING key does not,
+# because a key nobody wrote is a field nobody read.
+#
+# The register is APPEND-ONLY. Entries are never deleted; grant status and
+# lineage edges change, and supersession is an edge property rather than a
+# deletion.
+#
+# Validate with:
+#   python scripts/wish_register_check.py identity/wishes/REGISTER.yaml
+#
+# --- entry shape -------------------------------------------------------------
+#
+# Every wish carries: id, wisher, date, carriers, lineage, grant.
+#
+#   id        W-YYYY-MM-DD-SLUG
+#   wisher    node | operator | joint        (CLOSED vocabulary; an undeclared
+#                                             wisher is a validation failure,
+#                                             never a default)
+#   date      the day it was wished
+#   carriers  [{path, probe}] -- the file that CARRIES the wish, and a literal
+#             string that must appear in it. Both halves are required: a
+#             carrier with no probe is unverifiable, and an unverifiable
+#             citation is worse than none because it looks checked. This is the
+#             check that exists because a register once named a carrier that
+#             had never been written.
+#   lineage   {edge: [target-id, ...]} over the declared edges:
+#               directed   frames, merged_into, descends_into, ripens_into,
+#                          protects_wisher_via, fulfilled_via
+#               symmetric  mirrors, same_event_question
+#   grant     {status: ..., ...} -- status is required.
+#
+# Optionally `open_decision:`, which must also appear in `decisions_open` below.
+#
+# A worked example, commented out so the register ships genuinely empty:
+#
+#   wishes:
+#     - id: W-2026-01-01-EXAMPLE
+#       wisher: operator
+#       date: '2026-01-01'
+#       carriers:
+#         - path: identity/wishes/example-wish.md
+#           probe: 'W-2026-01-01-EXAMPLE'
+#       lineage: {}
+#       grant:
+#         status: OPEN
+#         condition: what would have to be true for this to be granted
+
+schema: wish-register/v1
+
+# The day this register was last written. Genesis stamps it at birth.
+updated: 'GENESIS-STAMPS-THIS'
+
+# Decisions this register is waiting on. Any wish naming an `open_decision`
+# must list it here.
+decisions_open: []
+
+# Zero wishes is valid. The list is append-only.
+wishes: []

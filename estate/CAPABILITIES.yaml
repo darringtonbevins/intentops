@@ -1,0 +1,128 @@
+# CAPABILITIES -- what the node can DO, and what each capability OWES.
+#
+# Two blocks, and they are different kinds of thing:
+#
+#   kinds:      SHIPPED. Nine declared kinds, one rule each. This is the
+#               applicability model and it arrives with the node.
+#   population: GROWN. `[]` at birth. Members are DERIVED from the node's own
+#               registries and probe suite, never hand-listed -- a hand-listed
+#               population decays toward maximum disagreement with reality.
+#
+# A MISSING file is a HALT (estate/README.md). `population: []` is valid.
+#
+# WRITE MODEL: `kinds` is single-writer (the operator, deliberately, one process
+# at a time) and is part of the shipped contract. `population` is written only
+# by an explicit derivation run, never by hand and never concurrently. The
+# loader never writes this file.
+#
+# WHY ONE RULE PER KIND AND NOT ONE ROW PER CAPABILITY. The three accountings
+# answer different questions about different sorts of thing:
+#
+#     a health monitor asks      "is this running right now?"    -> services
+#     a boot probe suite asks    "can a cold window find this?"  -> organs, facts
+#     a boot anchor index asks   "does a cold window carry it?"  -> both
+#
+# A scorer that owes every accounting from every capability reports a uniformly
+# terrible number that means nothing. A scorer that silently skips what is not
+# owed reports a flattering number that means nothing either. So applicability
+# is DECLARED here, with a reason for every `n/a`, and the exclusion is
+# readable rather than buried in an if-statement.
+#
+# NOTHING HERE EXCUSES A GAP. `n/a` is a claim that the accounting was never
+# owed. It is dated, attributable and reviewable. `applies` with no coverage is
+# a real gap and must read as one.
+#
+# CLOSED VOCABULARIES. An undeclared value is a HALT, never a default:
+#
+#   accounting: probe | anchor | monitored
+#   status:     applies | n/a
+#   every accounting entry REQUIRES a `why`, INCLUDING the `n/a` ones -- an
+#   exclusion with no stated reason is the failure this file exists to prevent.
+#
+# The nine kind ids below are the closed set. Adding a tenth kind is a
+# deliberate edit to this file, not something a scorer may infer.
+
+schema: estate-capabilities/v1
+as_of: "2026-09-06"
+
+kinds:
+
+  service:
+    what: "A process that runs and holds a port or a socket."
+    owes:
+      probe:     {status: "n/a", why: "a boot probe cannot verify a live process; liveness belongs to a health monitor, and asking the boot corpus about a port trades a real check for a spelling match"}
+      anchor:    {status: "applies", why: "a fresh window that cannot find the port cannot reach the service"}
+      monitored: {status: "applies", why: "liveness is exactly what a running thing owes"}
+
+  estate-store:
+    what: "A durable knowledge or state store with a declared write model."
+    owes:
+      probe:     {status: "applies", why: "a cold window must be able to find the store and name its write model"}
+      anchor:    {status: "applies", why: "the boot anchor index is what a fresh window actually carries"}
+      monitored: {status: "applies", why: "a store that stops accepting writes must surface loudly rather than fail quiet"}
+
+  model-domain:
+    what: "One declared modelling domain in the node's model registry."
+    owes:
+      probe:     {status: "applies", why: "the domain's store, probe and contract must be reachable from a cold boot"}
+      anchor:    {status: "applies", why: "same reason as the probe"}
+      monitored: {status: "n/a", why: "a domain is a modelling contract, not a running thing; its conformance is checked by a registry validator on its own cadence"}
+
+  loop:
+    what: "An autonomous loop charter. Every charter is DISABLED at birth."
+    owes:
+      probe:     {status: "n/a", why: "the fleet is probed as a class; one boot probe per charter would spend the boot corpus on things a fresh window never needs individually"}
+      anchor:    {status: "n/a", why: "same -- the fleet is anchored, its members are not"}
+      monitored: {status: "applies", why: "a loop that stops ticking is invisible otherwise, and a class probe passing while one member is stuck is the known cost of the two n/a rows above"}
+
+  organ:
+    what: >-
+      A named, load-bearing mechanism with a boot anchor and a probe -- the
+      ordering store, the gate, the validation family, the approval queue. The
+      population is DERIVED from the truth paths of the node's probe suite, so
+      an organ cannot be born outside the census.
+    owes:
+      probe:     {status: "applies", why: "an organ exists precisely so that a cold window can find it"}
+      anchor:    {status: "applies", why: "the anchor index is the organ index"}
+      monitored: {status: "n/a", why: "most organs are read by a checklist, not by a live collector. Raise this to `applies` for any organ that gains a daemon or a cadence whose silence should alarm"}
+
+  absorption:
+    what: "A pipeline that ingests external material into the node's knowledge."
+    owes:
+      probe:     {status: "applies", why: "the ingestion metabolism is a boot-visible concern"}
+      anchor:    {status: "n/a", why: "individual absorbers do not each earn a boot-corpus line; the metabolism as a whole does"}
+      monitored: {status: "applies", why: "a stage that produces zero must WARN -- zero output is a state, not a success"}
+
+  registry:
+    what: >-
+      A config or schema file that DEFINES another population -- the port map,
+      the model registry, this file, the invariants. Split out from `organ`
+      because calling a registry an organ double-counts the population it
+      defines.
+    owes:
+      probe:     {status: "applies", why: "a cold window that cannot find the registry cannot enumerate what it defines; these are the highest-leverage probes a node has"}
+      anchor:    {status: "applies", why: "same reason as the probe"}
+      monitored: {status: "n/a", why: "a config file has no liveness; its conformance is checked by a validator and a no-drift gate"}
+
+  projection:
+    what: >-
+      A GENERATED artifact -- a rendered matrix, an index, a birth certificate.
+      Correct the model, never the projection.
+    owes:
+      probe:     {status: "applies", why: "a fresh window reads the projection, so it must be findable -- and the probe detects the generator having silently stopped, which is the failure that matters"}
+      anchor:    {status: "applies", why: "same reason as the probe"}
+      monitored: {status: "n/a", why: "staleness belongs to the generator; monitor the cadence that writes it, not the artifact"}
+
+  internal-module:
+    what: >-
+      Implementation detail of a subsystem -- a cache, a worker pool, a client
+      shim. Declared so that plumbing does not silently inflate the denominator
+      of every coverage number.
+    owes:
+      probe:     {status: "n/a", why: "nobody would spend a boot-corpus line on a worker pool, and pretending otherwise inflates the denominator without improving coverage"}
+      anchor:    {status: "n/a", why: "same reason as the probe"}
+      monitored: {status: "n/a", why: "covered transitively by the subsystem that owns it"}
+
+# GROWN, not shipped. Members are derived from the node's registries and probe
+# suite. `[]` is the honest state of a node that has not run a derivation yet.
+population: []

@@ -1,0 +1,134 @@
+# Capability kinds and which accountings APPLY to each.
+#
+# WHY THIS FILE EXISTS. A cold accounting of "does this capability have a
+# probe, a boot anchor, a liveness monitor" is meaningless without first
+# answering a prior question: was that accounting ever OWED? A port is not
+# the sort of thing a boot-corpus probe covers, and an ordering store is not
+# the sort of thing a port-liveness check covers. Scoring every capability
+# against every accounting -- and reading a mismatch as a gap -- manufactures
+# a crisis out of a category error.
+#
+# This file is the fix: one rule per KIND, not one row per capability. A
+# population of many capabilities of the same kind is covered by a single
+# rule here, which is the whole compression this file buys.
+#
+# NOTHING HERE EXCUSES A GAP. Marking an accounting `n/a` is a claim that it
+# was never owed, and every such claim is visible, dated, and reviewable in
+# this file rather than buried in a scorer's if-statement. An exclusion you
+# can read is the opposite of an exclusion that happens silently
+# (no-silent-failures.md rule 6 -- a reader that substitutes a default for a
+# missing field has left the field out of the population; this file exists
+# so "not owed" is a stated fact, never a silent default).
+#
+# WRITE MODEL: reviewed, human-authored config. Not a store -- nothing
+# appends to it programmatically. Consumed by the capability manifest and
+# membership-audit scripts of an adopting project; this file ships as the
+# generic starting taxonomy and is expected to be extended per-project via
+# `overrides` and `excluded_populations`, never by editing a kind's rule to
+# fit one exceptional capability.
+#
+# Schema: capability-kinds/v1.
+
+schema: capability-kinds/v1
+as_of: "2026-09-06"
+
+# Which accountings are OWED by each kind.
+#   applies -- the accounting is meaningful and its absence is a real gap
+#   n/a     -- the accounting was never owed; the reason is stated
+kinds:
+
+  service:
+    what: "A process that runs and holds a port."
+    accountings:
+      probe:     {status: n/a, why: "a boot-corpus probe cannot verify a live process; liveness is a health collector's job, and asking the boot corpus about a port would trade a real check for a spelling match"}
+      anchor:    {status: applies, why: "a fresh window that cannot find the port cannot reach the service"}
+      monitored: {status: applies, why: "liveness is exactly what a service owes"}
+
+  estate-store:
+    what: "A durable knowledge or state store."
+    accountings:
+      probe:     {status: applies, why: "a cold window must be able to find the store and name its write model"}
+      anchor:    {status: applies, why: "the boot-anchor index is the organ index a fresh window carries"}
+      monitored: {status: applies, why: "a store that stops accepting writes must surface"}
+
+  model-domain:
+    what: "A modelling contract: a named domain with its own store, probe, and conformance check."
+    accountings:
+      probe:     {status: applies, why: "the domain's store, probe and contract must be reachable from boot"}
+      anchor:    {status: applies, why: "same"}
+      monitored: {status: n/a, why: "a domain is a modelling contract, not a running thing; conformance is checked by a dedicated estate-check instrument on its own cadence, not by a liveness monitor"}
+
+  loop:
+    what: "An autonomous loop or scheduled cadence, run under a charter."
+    accountings:
+      probe:     {status: n/a, why: "a class-level probe over the whole loop fleet covers what a fresh window actually needs; N per-loop boot probes spend the boot corpus on things a fresh window never needs individually -- but the known cost of that choice is that a class probe can pass while one member sits broken for days, which is exactly why monitored applies below"}
+      anchor:    {status: n/a, why: "same -- the fleet is anchored, the members are not"}
+      monitored: {status: applies, why: "a loop that stops ticking is invisible otherwise; this is the accounting the class-probe gap actually needs"}
+
+  organ:
+    what: >-
+      A named, load-bearing mechanism with a boot anchor and a probe -- an
+      ordering store, a friction ledger, a coverage oracle, a witness
+      register, a session registry. Derived from the truth paths in the
+      probe suite rather than hand-listed, because a hand-listed organ
+      population is the exact enumeration-decay trap this file exists to
+      avoid.
+    accountings:
+      probe:     {status: applies, why: "an organ exists precisely so a cold window can find it"}
+      anchor:    {status: applies, why: "same; the boot-anchor index is its pointer"}
+      monitored: {status: n/a, why: "most organs are read at a periodic review by a checklist, not by a live collector -- raise this to `applies` for any organ that gains a daemon or a cadence whose silence should alarm"}
+
+  absorption:
+    what: "An absorption system that pulls external material into the corpus."
+    accountings:
+      probe:     {status: applies, why: "the absorption metabolism is a boot-visible concern; a heartbeat exists because a silent stage can look green while producing nothing"}
+      anchor:    {status: n/a, why: "individual absorbers do not each earn a boot-corpus line; the metabolism as a whole does"}
+      monitored: {status: applies, why: "no-silent-failures: a stage that produces zero must WARN"}
+
+  registry:
+    what: >-
+      A config or schema file that DEFINES another population -- a ports
+      registry, a knowledge-estate manifest, a model registry, a taxonomy,
+      an invariants file, a skills registry. Split out from `organ` because
+      calling a registry an organ would double-count the population it
+      defines.
+    accountings:
+      probe:     {status: applies, why: "a cold window that cannot find the registry cannot enumerate what it defines -- this is typically the single highest-leverage probe in the whole suite"}
+      anchor:    {status: applies, why: "same"}
+      monitored: {status: n/a, why: "a config file has no liveness; its conformance is checked by a dedicated estate-check instrument, not a liveness monitor"}
+
+  projection:
+    what: >-
+      A GENERATED artifact -- a rendered environment model, a compliance
+      matrix, an open-sessions view, a rendered register. Correct the
+      model that generates it, never the projection by hand.
+    accountings:
+      probe:     {status: applies, why: "a fresh window reads the projection, so it must be findable -- and a probe on it detects the generator having silently stopped, which is the failure mode that matters"}
+      anchor:    {status: applies, why: "same"}
+      monitored: {status: n/a, why: "staleness belongs to the generator, not the artifact; monitor the cadence that writes it, not the file itself"}
+
+  internal-module:
+    what: >-
+      Implementation detail of a subsystem -- a worker pool, a cache layer,
+      a fusion helper -- that reaches a registry's denominator only by being
+      listed under a subsystem's support-module list, not by being a
+      capability anyone intended to account for separately.
+    accountings:
+      probe:     {status: n/a, why: "nobody spends a boot-corpus line on a worker pool, and pretending otherwise inflates the denominator without adding coverage"}
+      anchor:    {status: n/a, why: "same"}
+      monitored: {status: n/a, why: "covered transitively by the subsystem that owns them"}
+
+# Per-capability overrides. Use SPARINGLY -- every row here is a
+# hand-maintained exception and the whole point of this file is to have few
+# of them. A row must say why the kind rule is wrong for this one thing.
+# None ship by default; a project adds its own as it grows organs whose kind
+# assignment by directory alone would mislead (e.g. a governance mechanism
+# that happens to live under a generic-sounding package).
+overrides: {}
+
+# Populations whose members are NOT capabilities and should never be scored.
+# Listed rather than filtered in code, so the exclusion is reviewable.
+excluded_populations:
+  support-module:
+    maps_to_kind: internal-module
+    why: "implementation modules of a subsystem; see internal-module above"

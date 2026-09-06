@@ -1,0 +1,101 @@
+# Two questions about structure, which the ordinary test run would not ask
+# loudly enough on its own.
+#
+#   1. Does the dependency arrow still point one way? The core must import
+#      nothing from any host adapter. That is what makes a second host a second
+#      PACKAGE rather than an edit to the gate -- and it is the rule most likely
+#      to be broken by accident and least likely to be noticed, because an
+#      import added for one convenient constant breaks no test, changes no
+#      verdict, and quietly welds the gate to one runtime forever.
+#
+#   2. Does every host claimed in the registry still get exercised, or say out
+#      loud why it does not? A skipped contract stays in the denominator. The
+#      cheapest way to improve a pass rate is to stop testing the thing that
+#      fails, and that is exactly what this job is here to make visible.
+#
+# The job prints the saddle roster on every run, pass or fail, so the population
+# is in the log rather than in somebody's memory.
+
+name: contract-tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  direction:
+    name: the core depends on no host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: The arrow points one way
+        # The test reads import statements in the source rather than inspecting
+        # sys.modules, because a conditional import inside a rarely taken branch
+        # would pass an import-time check and still be an inversion.
+        run: pytest tests/test_dependency_direction.py -q
+
+      - name: The core imports with no saddle installed
+        # The strongest available form of the same claim: nothing from any host
+        # adapter is even on the path here.
+        run: python -c "import intentops_core.gate, intentops_core.gate.classify; print('the gate stands up alone')"
+
+  saddle-contract:
+    name: the five operations, per host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -e packages/intentops-saddle-claudecode --no-deps
+          pip install pytest
+
+      - name: Run the contract against every claimed host
+        # -rs prints the skip reasons, and -s lets the roster through. Both are
+        # the point of the job: a host that skips silently is a host nobody
+        # remembers is untested.
+        run: pytest tests/test_saddle_contract.py -q -rs -s
+
+      - name: The reference adapter can refuse
+        # The contract test drives this through a subprocess already. Running it
+        # again as its own step means "the gate can say no" is a named result in
+        # the log and not an inference from a green summary line.
+        run: python -m intentops_saddle_claudecode.pre_tool --selftest
+
+      - name: What a green result here does not mean
+        if: success()
+        run: |
+          echo "The reference adapter emits a refusal in its host's own"
+          echo "vocabulary, and the package split is intact."
+          echo ""
+          echo "It does NOT establish that the host HONOURS that refusal. The"
+          echo "second of the five operations is a promise the runtime makes,"
+          echo "not a function in a package, and no test in this repository can"
+          echo "close that gap. Every host row graded on documentation rather"
+          echo "than on a live run says so in config/saddles.yaml."

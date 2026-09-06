@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intentops-saddle-claudecode"
+version = "0.1.0"
+description = "The reference IntentOps saddle: the host adapter that turns a Verdict into one runtime's own refusal."
+requires-python = ">=3.11"
+license = { text = "LicenseRef-Pending" }
+authors = [
+    { name = "IntentOps contributors" },
+]
+
+# The dependency arrow points one way and only one way: a saddle depends on the
+# core, and the core never depends on a saddle. That direction is what lets a
+# second host be a second package instead of an edit to the gate, and it is
+# checked by a test rather than trusted -- see tests/test_dependency_direction.py.
+dependencies = [
+    "intentops",
+    "pyyaml",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["intentops_saddle_claudecode*"]
