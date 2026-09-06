@@ -1,3 +1,6 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
+# The imprint bundle is content-hashed by IMPRINT-MANIFEST.yaml: its bytes must be identical
+# in git and in every checkout on every OS, so no line-ending conversion is ever applied to it.
+genesis/imprint/** -text

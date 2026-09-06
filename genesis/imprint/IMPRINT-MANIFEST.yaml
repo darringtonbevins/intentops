@@ -174,8 +174,8 @@ signatures: []
 # >>> BEGIN GENERATED artifacts -- written by scripts/genesis/build_manifest.py
 artifacts:
   - path: "genesis/imprint/IMPRINT.md"
-    sha256: "72589d709d1d4994c8501659a9045b462031fd076ede980fda14f2bbbe81dc54"
-    bytes: 56635
+    sha256: "002d17bb42bb7d04a5f26171f1cbf92404c6322ab412fc777f08ce6e92a01739"
+    bytes: 55679
   - path: "genesis/imprint/archetypes/CATALOGUE.yaml"
     sha256: "43fe16cff990af19f2850030ee70231d9fe7fdbdd15db4dddec37522ba33d98c"
     bytes: 2565
@@ -183,14 +183,14 @@ artifacts:
     sha256: "b2ad3874cc0c311325781b8f4a6e4467b3d47c305d9cc22624cc30d51207ce46"
     bytes: 39741
   - path: "genesis/imprint/invariants/gide.yaml"
-    sha256: "fc2e6090983ab5d1e5930dceb9748f80d356827c61c7b50d4d87a902984b7bf8"
-    bytes: 8690
+    sha256: "1a9f22f4d21aacbe7aae98478078558597996c839781444c0a339b021bb36a96"
+    bytes: 8471
   - path: "genesis/imprint/invariants/tapch.yaml"
-    sha256: "72b3c9064c65e3779b0d41085666acc2047725798bfd62375348319511d850ce"
-    bytes: 3340
+    sha256: "2cc788682883adf40fb8845a1fb766a27c59cc6286d55a4ca8597d3422eb26cb"
+    bytes: 3248
   - path: "genesis/imprint/invariants/vocabulary.yaml"
-    sha256: "83873c62154ef368518e15b1348bc6c32be37986b6459932e655c8cf0f1bccbf"
-    bytes: 11465
+    sha256: "da0161b37dd750de4fe5b2416f68cf4a880ab23fff58418579baa9aeae867793"
+    bytes: 11187
   - path: "genesis/imprint/rules/admin-actions.md"
     sha256: "32adbcfa9a36db293a3b06f665ae36391b2470eda75e602670364e6d364c6af8"
     bytes: 4213
