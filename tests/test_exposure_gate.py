@@ -155,16 +155,35 @@ def test_a_path_exemption_covers_only_the_tokens_it_names(fence) -> None:
     assert shapes.findings, "an allowed path must never be exempt from the shape patterns"
 
 
-def test_the_shipped_fence_exempts_no_token_anywhere(fence) -> None:
-    """Today every allowed path carries an empty exemption list, and that is a
-    claim worth pinning: the three allowed paths exist for a name that is not
-    on the denylist, so no exemption is owed. If one is ever added, this test
+#: Paths allowed to carry the repository owner's name as a stated copyright
+#: holder, and exactly which token ids each is allowed. Added 2026-09-06 for
+#: NOTICE and PROVENANCE.md (justified in config/exposure-fence.yaml's BLIND
+#: SPOTS block and in the allowed_path_tokens header comment); every other
+#: path must stay at zero exemption, and any new entry here needs the same
+#: justification.
+_JUSTIFIED_PATH_EXEMPTIONS = {
+    "notice": frozenset({"operator-given", "operator-family"}),
+    "provenance.md": frozenset({"operator-given", "operator-family"}),
+    # Added 2026-09-06 (licence ruling): the Apache-2.0 appendix boilerplate and the
+    # README status line carry the same copyright-holder name, same two ids, nothing else.
+    "license": frozenset({"operator-given", "operator-family"}),
+    "readme.md": frozenset({"operator-given", "operator-family"}),
+}
+
+
+def test_the_shipped_fence_exempts_no_undeclared_token_anywhere(fence) -> None:
+    """Every allowed path carries an empty exemption list UNLESS it is one of
+    the justified exceptions above, and even those exempt nothing beyond the
+    exact ids named. A path exemption is a declared blind spot: if a new one
+    is ever added without updating `_JUSTIFIED_PATH_EXEMPTIONS`, this test
     fails and somebody has to justify it in the diff."""
     for path, ids in fence.allowed_path_tokens.items():
-        assert ids == (), (
-            f"{path} now exempts {list(ids)}. A path exemption is a declared "
-            "blind spot: state in the commit which name it covers and why that "
-            "name legitimately appears there."
+        expected = _JUSTIFIED_PATH_EXEMPTIONS.get(path.lower(), frozenset())
+        assert frozenset(ids) == expected, (
+            f"{path} exempts {sorted(ids)}, expected {sorted(expected)}. A "
+            "path exemption is a declared blind spot: state in the commit "
+            "which name it covers and why that name legitimately appears "
+            "there."
         )
 
 

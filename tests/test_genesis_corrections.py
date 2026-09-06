@@ -429,12 +429,29 @@ def test_the_editorial_note_admits_the_redaction_and_the_omission():
 def test_the_fence_allows_only_paths_that_exist():
     import yaml
 
+    # Justified 2026-09-06 in config/exposure-fence.yaml's BLIND SPOTS block
+    # and allowed_path_tokens header: NOTICE and PROVENANCE.md state the
+    # repository owner's name as the copyright holder, which is on the
+    # denylist (it doubles as the private estate's operator identity). Every
+    # other allowed path still exempts nothing, and these two exempt nothing
+    # beyond the two ids named here.
+    justified = {
+        "NOTICE": ["operator-given", "operator-family"],
+        "PROVENANCE.md": ["operator-given", "operator-family"],
+        # licence ruling 2026-09-06: copyright-holder line in the Apache appendix + README status
+        "LICENSE": ["operator-given", "operator-family"],
+        "README.md": ["operator-given", "operator-family"],
+    }
     fence = yaml.safe_load(
         (REPO / "config" / "exposure-fence.yaml").read_text(encoding="utf-8"))
     for rel in fence["allowed_paths"]:
         assert (REPO / rel).is_file(), f"allowed_paths names a missing {rel}"
-        assert fence["allowed_path_tokens"][rel] == [], (
-            "an allowed path exempts no token, ever")
+        expected = justified.get(rel, [])
+        assert sorted(fence["allowed_path_tokens"][rel]) == sorted(expected), (
+            f"{rel} exempts {fence['allowed_path_tokens'][rel]}, expected "
+            f"{expected} -- an allowed path exempts no token beyond a stated, "
+            "justified exception"
+        )
 
 
 # ---------------------------------------------------------------------------

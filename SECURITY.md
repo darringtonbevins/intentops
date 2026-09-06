@@ -7,9 +7,9 @@ incorrectly — both are treated as security issues, not ordinary bugs.
 ## Reporting a vulnerability
 
 **Private disclosure path: placeholder.** This repository is pre-release and has not
-yet flipped public; a maintained private-disclosure address (or a GitHub Security
+public; report a suspected vulnerability privately through GitHub Security Advisories on this repository (Security -> Report a vulnerability). Do not open a public issue for it; hold it for the disclosure address (or a GitHub Security
 Advisory flow) will be published here before the public flip, as part of the same gate
-that requires a `LICENSE` file to exist first (see `LICENSE-PENDING.md`). Until then,
+that requires a `LICENSE` file to exist first (see `LICENSE`). Until then,
 do not open a public issue for a suspected vulnerability — hold it for the disclosure
 channel once it exists.
 

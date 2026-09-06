@@ -49,6 +49,14 @@ manufactures confidence over a population it never saw
       config and are deliberate.
     * Decoding uses ``errors="replace"``. A token in an unusual encoding may be
       mangled past recognition before it is ever compared.
+    * ``--history`` exempts the identities and addresses declared under the
+      config's ``history_allowed_identities`` block -- the repository's own
+      publishing account and its co-author trailer, never a blanket pass on
+      names or emails in general. The exemption is scoped to the specific
+      author/committer line an identity appears on; the same word in a
+      subject or body is still a finding. Every run prints how many identity
+      checks it made and how many it exempted, so a widened allowlist is
+      visible in the report rather than only in the config diff.
 
 EXIT CODES
     0  clean -- no hit outside an allowed path or an explained marker
@@ -97,6 +105,13 @@ _MATCH_MODES = ("word", "substring")
 #: cannot be saved is not a working instrument.
 _KEY_HEADER_SAMPLE = ("-" * 5) + "BEGIN OPENSSH PRIVATE KEY" + ("-" * 5)
 
+#: Same reasoning, for the history-identity selftest fixtures below: a
+#: literal address at a domain this file itself does not declare reserved
+#: would be a finding when the gate scans its own source -- these two exist
+#: only to prove the history-scope exact-digest and domain exemptions fire.
+_SYNTHETIC_EXACT_EMAIL = "exact" + "@" + "allowed.example"
+_SYNTHETIC_DOMAIN_EMAIL = "person" + "@" + "reserved.example"
+
 
 class FenceError(RuntimeError):
     """The fence itself is unusable. Always fatal -- never a degraded scan."""
@@ -144,6 +159,17 @@ class Fence:
     skip_dirs: Tuple[str, ...]
     skip_extensions: Tuple[str, ...]
     max_file_bytes: int
+    #: HISTORY-SCOPE ONLY (see config header). name-digest -> token ids that
+    #: name legitimately triggers, exempted ONLY on the specific author or
+    #: committer line that name appears on -- never on the subject or body.
+    history_allowed_name_tokens: Dict[str, Tuple[str, ...]]
+    #: HISTORY-SCOPE ONLY. Exact digests of addresses exempt from the
+    #: email-shaped pattern anywhere in a commit (identity line, subject, or
+    #: body).
+    history_allowed_email_digests: Tuple[str, ...]
+    #: HISTORY-SCOPE ONLY. Domain suffixes exempt from the email-shaped
+    #: pattern anywhere in a commit -- broader than the exact digests above.
+    history_allowed_email_domains: Tuple[str, ...]
 
     # -- derived lookups ---------------------------------------------------
 
@@ -288,6 +314,64 @@ def load_fence(path: Path) -> Fence:
                 )
         pairs[norm] = tuple(str(t) for t in ids)
 
+    history_block = _require(raw, "history_allowed_identities", str(path))
+    if not isinstance(history_block, dict):
+        raise FenceError(f"{path}: history_allowed_identities must be a mapping")
+    history_entries = _require(
+        history_block, "identities", f"{path}: history_allowed_identities"
+    )
+    if not isinstance(history_entries, list):
+        raise FenceError(f"{path}: history_allowed_identities.identities must be a list")
+    history_name_tokens: Dict[str, Tuple[str, ...]] = {}
+    history_email_digests: List[str] = []
+    seen_history_ids: set = set()
+    _HISTORY_KINDS = ("name", "email")
+    for i, entry in enumerate(history_entries):
+        where = f"{path}: history_allowed_identities.identities[{i}]"
+        if not isinstance(entry, dict):
+            raise FenceError(f"{where}: must be a mapping")
+        hid = str(_require(entry, "id", where))
+        if hid in seen_history_ids:
+            raise FenceError(f"{where}: duplicate identity id {hid!r}")
+        seen_history_ids.add(hid)
+        kind = str(_require(entry, "kind", where))
+        if kind not in _HISTORY_KINDS:
+            raise FenceError(
+                f"{where}: kind {kind!r} is not declared. Declared kinds are "
+                f"{_HISTORY_KINDS}; an undeclared kind is a hard exit."
+            )
+        digest = str(_require(entry, "sha256", where)).strip().lower()
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise FenceError(f"{where}: sha256 is not a 64-character hex digest")
+        if kind == "name":
+            exempts_raw = entry.get("exempts")
+            if not isinstance(exempts_raw, list) or not exempts_raw:
+                raise FenceError(
+                    f"{where}: a 'name' identity must declare a non-empty "
+                    "'exempts' list of token ids -- a name exemption with "
+                    "nothing to exempt does nothing and is not a valid entry."
+                )
+            for token_id in exempts_raw:
+                if str(token_id) not in known_tokens:
+                    raise FenceError(
+                        f"{where}: exempts unknown token id {token_id!r}"
+                    )
+            history_name_tokens[digest] = tuple(str(t) for t in exempts_raw)
+        else:
+            if entry.get("exempts"):
+                raise FenceError(
+                    f"{where}: an 'email' identity does not exempt tokens; "
+                    "remove 'exempts' or declare kind: name."
+                )
+            history_email_digests.append(digest)
+    history_domains_raw = _require(
+        history_block, "allowed_email_domains", f"{path}: history_allowed_identities"
+    )
+    if not isinstance(history_domains_raw, list):
+        raise FenceError(
+            f"{path}: history_allowed_identities.allowed_email_domains must be a list"
+        )
+
     return Fence(
         tokens=tuple(tokens),
         patterns=tuple(patterns),
@@ -300,6 +384,9 @@ def load_fence(path: Path) -> Fence:
         skip_dirs=tuple(str(d) for d in _require(raw, "skip_dirs", str(path))),
         skip_extensions=tuple(str(e).lower() for e in _require(raw, "skip_extensions", str(path))),
         max_file_bytes=int(_require(raw, "max_file_bytes", str(path))),
+        history_allowed_name_tokens=history_name_tokens,
+        history_allowed_email_digests=tuple(history_email_digests),
+        history_allowed_email_domains=tuple(str(d).lower() for d in history_domains_raw),
     )
 
 
@@ -337,6 +424,14 @@ class ScanResult:
     lines_read: int = 0
     marker_lines: int = 0
     bad_markers: List[Finding] = field(default_factory=list)
+    #: HISTORY-SCOPE counters. Always 0 for a tree scan. Reported loudly
+    #: rather than folded silently into "clean" -- an exemption changes what
+    #: a CLEAN verdict means, and the report says so every time, never only
+    #: when something is found (no-silent-failures.md rule 1: a refusal, and
+    #: an exemption is a kind of refusal-to-look, must stay countable).
+    identities_checked: int = 0
+    identities_exempted: int = 0
+    emails_exempted: int = 0
 
     @property
     def clean(self) -> bool:
@@ -408,19 +503,35 @@ def scan_text(
     path: str,
     exempt_token_ids: Sequence[str] = (),
     result: Optional[ScanResult] = None,
+    extra_allowed_email_domains: Sequence[str] = (),
+    extra_allowed_email_digests: Sequence[str] = (),
+    line_offset: int = 0,
 ) -> ScanResult:
     """Scan one document. Pure over its arguments; opens nothing.
 
     ``exempt_token_ids`` is a set of specific token ids this document may
     legitimately carry -- never a blanket "skip the names here". The shape
-    patterns are never exempt anywhere, for anyone.
+    patterns are never exempt anywhere, for anyone -- EXCEPT the email-shaped
+    pattern, which two more parameters can clear: ``extra_allowed_email_domains``
+    (a domain suffix) and ``extra_allowed_email_digests`` (an exact address
+    digest). Both are HISTORY-SCOPE constructs (``scan_history`` is their only
+    caller with non-empty values); the tree walk never passes them, so
+    ``scan_tree`` is unaffected by their existence.
+
+    ``line_offset`` shifts reported line numbers by a constant -- used by
+    ``scan_history`` to scan a commit's author line, committer line, and
+    subject/body as three separate calls (each needing its own exemption
+    scope) while the reported line numbers still read 1, 2, 3... as if the
+    whole commit had been scanned in one pass.
     """
     res = result if result is not None else ScanResult()
     exempt = frozenset(exempt_token_ids)
+    extra_domains = tuple(extra_allowed_email_domains)
+    extra_digests = frozenset(extra_allowed_email_digests)
     word_digests = fence.word_digests
     substring_digests = fence.substring_digests
 
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    for line_no, line in enumerate(text.splitlines(), start=1 + line_offset):
         res.lines_read += 1
 
         marker = _marker_on(line, fence)
@@ -446,10 +557,21 @@ def scan_text(
             for m in pat.regex.finditer(line):
                 spans.append((m.start(), m.end(), pat.id))
                 if pat.id == "email-shaped":
-                    domain = m.group(0).rsplit("@", 1)[-1].lower().rstrip(".")
+                    address = m.group(0).strip().lower()
+                    domain = address.rsplit("@", 1)[-1].rstrip(".")
                     if any(domain == d or domain.endswith("." + d)
                            for d in fence.allowed_email_domains):
                         continue
+                    if extra_domains and any(
+                        domain == d or domain.endswith("." + d) for d in extra_domains
+                    ):
+                        res.emails_exempted += 1
+                        continue
+                    if extra_digests:
+                        addr_digest = hashlib.sha256(address.encode("utf-8")).hexdigest()
+                        if addr_digest in extra_digests:
+                            res.emails_exempted += 1
+                            continue
                 reported.append((m.start(), m.end(), "pattern", pat.id))
 
         low = line.lower()
@@ -589,19 +711,9 @@ def _run_git(root: Path, args: Sequence[str]) -> Tuple[int, str, str]:
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
-def _commit_document(fields: Sequence[str]) -> str:
-    """Render one commit as a small document, one fact per line.
-
-    Line numbers then mean something in a finding: line 1 is the author, line
-    2 the committer, line 3 the subject, and the body follows.
-    """
-    _, an, ae, cn, ce, subject, body = (list(fields) + [""] * 7)[:7]
-    lines = [f"author: {an} <{ae}>",
-             f"committer: {cn} <{ce}>",
-             f"subject: {subject}"]
-    if body.strip():
-        lines.extend(body.splitlines())
-    return "\n".join(lines) + "\n"
+def _name_digest(name: str) -> str:
+    """Digest a display name the same way the fence's identity entries do."""
+    return hashlib.sha256(name.strip().lower().encode("utf-8")).hexdigest()
 
 
 def scan_history(
@@ -620,6 +732,14 @@ def scan_history(
     working tree where a reserved name may legitimately appear; an author
     line is not one of them, and inheriting that exemption here would let the
     one surface this function exists to watch exempt itself.
+
+    ``fence.history_allowed_identities`` (loaded from the config's
+    ``history_allowed_identities`` block) is scoped even tighter than that:
+    the author and committer lines are scanned SEPARATELY from the subject
+    and body, each with only the exemption its own identity earns. A name
+    that clears the author line is still a finding if the same word turns up
+    in the commit message -- the allowlist exempts a KNOWN IDENTITY, not a
+    word, and the subject/body were never that identity's line to begin with.
     """
     if log_text is None:
         code, out, err = _run_git(root, ["rev-parse", "--git-dir"])
@@ -645,17 +765,52 @@ def scan_history(
             continue
         fields = record.split(_GIT_FIELD)
         sha = (fields[0] or "?").strip()
+        _, an, ae, cn, ce, subject, body = (list(fields) + [""] * 7)[:7]
         commits += 1
         res.files_scanned += 1
-        scan_text(_commit_document(fields), fence,
-                  path=f"git:{sha[:12]}", result=res)
+        commit_path = f"git:{sha[:12]}"
+
+        for role_label, name, email, offset in (
+            ("author", an, ae, 0),
+            ("committer", cn, ce, 1),
+        ):
+            res.identities_checked += 1
+            exempt_tokens = fence.history_allowed_name_tokens.get(_name_digest(name), ())
+            if exempt_tokens:
+                res.identities_exempted += 1
+            scan_text(
+                f"{role_label}: {name} <{email}>\n", fence, path=commit_path,
+                exempt_token_ids=exempt_tokens,
+                extra_allowed_email_domains=fence.history_allowed_email_domains,
+                extra_allowed_email_digests=fence.history_allowed_email_digests,
+                line_offset=offset, result=res,
+            )
+
+        rest_lines = [f"subject: {subject}"]
+        if body.strip():
+            rest_lines.extend(body.splitlines())
+        # No exempt_token_ids here: the subject/body is nobody's identity
+        # line, so a fenced word there is still a finding even for an
+        # allowlisted identity. The email exemption stays -- the co-author
+        # trailer's address lives in the body, not on an identity line.
+        scan_text(
+            "\n".join(rest_lines) + "\n", fence, path=commit_path,
+            extra_allowed_email_domains=fence.history_allowed_email_domains,
+            extra_allowed_email_digests=fence.history_allowed_email_digests,
+            line_offset=2, result=res,
+        )
     return res, commits
 
 
 def render_history_report(res: ScanResult, commits: int, root: Path) -> str:
     lines = [f"exposure gate over the history of {root}",
              f"  population: {commits} commits read "
-             f"(identities and messages; never historical file content)"]
+             f"(identities and messages; never historical file content)",
+             f"  history allowlist: {res.identities_checked} identity checks "
+             f"(author + committer), {res.identities_exempted} matched an "
+             f"allowlisted identity, {res.emails_exempted} address(es) "
+             f"cleared by the history-scope email allowlist -- never silent, "
+             f"printed whether or not it changed the verdict"]
     if res.findings or res.bad_markers:
         lines.append(f"  FINDINGS: {len(res.findings)}")
         for finding in res.findings + res.bad_markers:
@@ -746,6 +901,17 @@ def _synthetic_fence(planted: str) -> Fence:
         skip_dirs=(".git",),
         skip_extensions=(".png",),
         max_file_bytes=64,
+        # A name and two addresses invented for the selftest, unrelated to
+        # ``planted`` -- proving the identity mechanism fires is a different
+        # claim from proving the planted-token mechanism fires, and mixing
+        # them would let one mask the other going untested.
+        history_allowed_name_tokens={
+            _name_digest("Permitted Person"): ("planted-word", "planted-substring"),
+        },
+        history_allowed_email_digests=(
+            hashlib.sha256(_SYNTHETIC_EXACT_EMAIL.encode("utf-8")).hexdigest(),
+        ),
+        history_allowed_email_domains=("reserved.example",),
     )
 
 
@@ -879,7 +1045,46 @@ def selftest() -> int:
             fired = True
         check("an unreadable history refuses rather than reporting clean", fired)
 
-    # 20: an unusable fence is fatal, never a quiet clean run.
+    # 20-25: the history identity allowlist. An allowlisted NAME exempts only
+    # its own declared tokens, only on its own identity line; an allowlisted
+    # ADDRESS (by exact digest or by domain) clears the email-shaped pattern
+    # anywhere in the commit, because a co-author trailer lives in the body,
+    # not on an identity line.
+    own_name_log = _log(("abc123def456", "Permitted Person", f"{planted}@example.com",
+                        "Permitted Person", f"{planted}@example.com", "ordinary subject", ""))
+    hist, count = scan_history(Path("."), fence, log_text=own_name_log)
+    check("an allowlisted identity's own declared token is exempted on its identity line",
+          hist.clean and count == 1 and hist.identities_exempted == 2)
+
+    body_leak_log = _log(("abc123def456", "Permitted Person", "safe@example.com",
+                         "Permitted Person", "safe@example.com", "a subject",
+                         f"mentions {planted} in the body"))
+    hist, _ = scan_history(Path("."), fence, log_text=body_leak_log)
+    check("the same allowlisted identity's message body is still scanned for its own token",
+          any(f.rule_id in ("planted-word", "planted-substring") for f in hist.findings))
+
+    domain_log = _log(("abc123def456", "A Person", _SYNTHETIC_DOMAIN_EMAIL,
+                       "A Person", _SYNTHETIC_DOMAIN_EMAIL, "subject",
+                       f"contact {_SYNTHETIC_DOMAIN_EMAIL} about it"))
+    hist, _ = scan_history(Path("."), fence, log_text=domain_log)
+    check("a history-scope allowed email domain clears the email-shaped pattern anywhere in the commit",
+          hist.clean and hist.emails_exempted >= 1)
+
+    exact_log = _log(("abc123def456", "A Person", _SYNTHETIC_EXACT_EMAIL,
+                      "A Person", _SYNTHETIC_EXACT_EMAIL, "subject", ""))
+    hist, _ = scan_history(Path("."), fence, log_text=exact_log)
+    check("a history-scope allowed exact email digest clears the email-shaped pattern",
+          hist.clean and hist.emails_exempted >= 1)
+
+    hist, count = scan_history(Path("."), fence, log_text=clean_log)
+    check("identity checks are counted for every commit whether or not any identity matches",
+          hist.identities_checked == 2 and hist.identities_exempted == 0)
+
+    rendered = render_history_report(hist, count, Path("."))
+    check("the history report states identity-check and exemption counts even when nothing fired",
+          "history allowlist:" in rendered)
+
+    # 26: an unusable fence is fatal, never a quiet clean run.
     with tempfile.TemporaryDirectory() as tmp:
         bad = Path(tmp) / "fence.yaml"
         bad.write_text("schema: exposure-fence/v1\nas_of: 'x'\n", encoding="utf-8")

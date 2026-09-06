@@ -8,11 +8,12 @@ dynamic = ["version"]
 description = "Governance framework for AI agents: a deterministic, tier-classified action gate; a deliberative council and precedent store above it; and a genesis that grows an aligned, accountable operator identity beneath it."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "LicenseRef-Pending" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "IntentOps contributors" },
 ]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Application Frameworks",

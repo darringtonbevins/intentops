@@ -107,6 +107,82 @@ def test_an_ordinary_commit_is_clean_and_still_counted():
 
 
 # ---------------------------------------------------------------------------
+# the history identity allowlist -- a public repository's own publishing
+# account is not a leak, but the exemption is scoped to exactly the identity
+# and line it was granted for, never to the word or the commit as a whole.
+# ---------------------------------------------------------------------------
+
+
+def test_an_allowlisted_identity_produces_no_finding_on_its_own_line():
+    """The fixture identity is ``Permitted Person``, declared in the gate's
+    own ``_synthetic_fence`` -- never a real name, for the same reason the
+    planted token is never a real fenced word."""
+    result, commits = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "Permitted Person", f"{PLANTED}@example.com",
+                       "Permitted Person", f"{PLANTED}@example.com", "ordinary", "")))
+    assert commits == 1
+    assert result.clean, (
+        "an identity the fence explicitly allowlists must not be a finding "
+        "on its own author/committer line"
+    )
+    assert result.identities_exempted == 2, (
+        "both the author and committer role matched the allowlisted identity"
+    )
+
+
+def test_a_personal_looking_email_outside_the_allowlist_is_still_a_finding():
+    """Only the two declared addresses (and their domains) are exempt.
+
+    Everything else -- a personal address, a firm address, anything not on
+    this narrow list -- is still a hard finding, exactly as it is in the
+    working tree scan.
+    """
+    result, _ = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "A Person", ADDRESS,
+                       "A Person", ADDRESS, "subject", "")))
+    assert any(f.rule_id == "email-shaped" for f in result.findings), (
+        "an address that matches no allowlist entry must still be a finding"
+    )
+
+
+def test_a_fenced_token_in_the_message_body_is_still_a_finding_for_an_allowlisted_identity():
+    """The allowlist exempts an IDENTITY LINE, not a commit.
+
+    An allowlisted author/committer earns nothing for the subject or body --
+    those are not that identity's line, and a fenced word there is exactly
+    as much a finding as it would be for anyone else.
+    """
+    result, _ = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "Permitted Person", "safe@example.com",
+                       "Permitted Person", "safe@example.com", "subject",
+                       f"this body still names {PLANTED}")))
+    assert any(f.rule_id in ("planted-word", "planted-substring")
+               for f in result.findings), (
+        "a fenced token in the message body must be a finding even when the "
+        "author/committer identity is allowlisted"
+    )
+
+
+def test_the_exemption_counts_are_reported_never_silently():
+    """A run always states how many identities it checked and exempted --
+    whether or not anything was found -- so a widened allowlist is visible
+    in the report, not only in the config diff."""
+    result, commits = gate.scan_history(
+        REPO_ROOT, _fence(),
+        log_text=_log(("a1b2c3d4e5f6", "Permitted Person", f"{PLANTED}@example.com",
+                       "Permitted Person", f"{PLANTED}@example.com", "subject", "")))
+    assert result.identities_checked == 2
+    assert result.identities_exempted == 2
+    rendered = gate.render_history_report(result, commits, REPO_ROOT)
+    assert "history allowlist:" in rendered
+    assert "2 identity checks" in rendered
+    assert "2 matched an allowlisted identity" in rendered
+
+
+# ---------------------------------------------------------------------------
 # and refuses rather than flattering itself
 # ---------------------------------------------------------------------------
 

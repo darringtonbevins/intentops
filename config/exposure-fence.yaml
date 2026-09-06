@@ -55,6 +55,22 @@
 #     both render as green. Before widening any exemption here, state how many
 #     files and how many token-checks it removes from the population, and read
 #     the next CLEAN verdict as covering only what remains.
+#   * The gate reads git history separately, under `--history`, and
+#     `history_allowed_identities` (below) is the SAME failure mode wearing a
+#     different face: an allowlisted identity is an exemption, not a
+#     clearance. It stops the scan from re-reporting authorship the
+#     repository already publishes by existing; it says nothing about a
+#     personal or firm address landing anywhere else in a commit, and it
+#     shrinks a population exactly as `allowed_path_tokens` does. Widening it
+#     is subject to the same rule stated above: say how many identities and
+#     how many checks it removes before doing so.
+#   * Added 2026-09-06: `allowed_path_tokens` now exempts 2 token ids
+#     (operator-given, operator-family) in each of 4 files (LICENSE, README.md, NOTICE,
+#     PROVENANCE.md) -- 4 token-checks removed from the population, for the
+#     stated reason that both files carry the repository owner's name as the
+#     copyright holder. Every other path in this file still carries an empty
+#     list, every other declared token is still checked in these two files,
+#     and every shape pattern is still checked everywhere, no exceptions.
 
 schema: exposure-fence/v1
 as_of: "2026-09-06"
@@ -210,14 +226,25 @@ allowed_email_domains:
 # and the author attribution lives in the imprint manifest, so the config and
 # the tree disagreed. They now agree. The contract stays listed: it is the same
 # class of file and a later edit may legitimately name the instance there.
+#
+# Added 2026-09-06 (same day): NOTICE and PROVENANCE.md, the repository's own
+# copyright and provenance notices. A copyright line naming the repository
+# owner is not a leak from the private estate -- it is the same public
+# authorship `git log` and GitHub already disclose (the same reasoning behind
+# `history_allowed_identities`, below), and a public repository with no
+# readable copyright holder is worse than one with an exemption stated here.
 allowed_paths:
   - genesis/imprint/IMPRINT.md
   - genesis/imprint/IMPRINT-MANIFEST.yaml
   - genesis/imprint/archetypes/CATALOGUE.yaml
   - identity/README.md
   - docs/IDENTITY-REPO-CONTRACT.md
+  - NOTICE
+  - PROVENANCE.md
+  - LICENSE
+  - README.md
 
-# WHICH tokens each allowed path may carry -- and the answer today is NONE.
+# WHICH tokens each allowed path may carry.
 #
 # This is deliberately not "allowed_paths are exempt from the whole denylist".
 # A whole-file exemption puts a blind spot over the most sensitive prose in the
@@ -226,11 +253,18 @@ allowed_paths:
 # is the failure mode of an untagged switch, where off-by-design and
 # off-by-neglect are indistinguishable from outside.
 #
-# The name those files legitimately carry is the first instance's OWN name,
-# which is not on the denylist above and therefore needs no exemption.
-# Everything on the denylist is a private-estate name, and none of these files
-# is a place for one. So every list here is empty, and the gate scans those
-# files like any other.
+# The first five paths carry the first instance's OWN name, which is not on
+# the denylist above and therefore needs no exemption -- their lists stay
+# empty, and the gate scans them like any other file.
+#
+# NOTICE and PROVENANCE.md are different: they carry the repository owner's
+# display name as the stated copyright holder, and that name IS on the
+# denylist (operator-given, operator-family), because it is also the private
+# estate's operator identity. Added 2026-09-06: exactly 2 files, 2 token ids
+# each -- 4 token-checks removed from the population, and ONLY those two ids;
+# every other declared token, and every shape pattern, is still checked in
+# both files (a GUID, a record key, or a stray private key in either would
+# still be a hard finding).
 #
 # An empty list means NO token is exempt for that path. There is no value that
 # means "all" -- if one existed, someone would eventually reach for it.
@@ -242,6 +276,68 @@ allowed_path_tokens:
   genesis/imprint/archetypes/CATALOGUE.yaml: []
   identity/README.md: []
   docs/IDENTITY-REPO-CONTRACT.md: []
+  NOTICE: [operator-given, operator-family]
+  PROVENANCE.md: [operator-given, operator-family]
+  LICENSE: [operator-given, operator-family]
+  README.md: [operator-given, operator-family]
+
+# History-scope identity allowlist. Everything above governs the WORKING
+# TREE; this block governs `--history` alone (scan_history never inherits it
+# the other way, and never inherits `allowed_path_tokens` either -- a commit
+# identity is not a file path).
+#
+# WHY THIS EXISTS: in a PUBLISHED repository the account that pushes it is
+# not a leak. Its display name and a noreply address issued for exactly this
+# purpose are the repository's own public authorship -- information `git log`
+# already discloses to anyone who clones it -- not private-estate data
+# arriving by accident. Without this block the history scan cannot tell that
+# ordinary, expected authorship apart from an actual exposure, and every
+# future commit reads red for a reason nobody has to fix.
+#
+# `identities` matches by KIND, each entry a digest of one string, never a
+# whole-line pairing:
+#   kind: name  -- the digest is of a lowercased display name. A match
+#     exempts ONLY the token ids listed in `exempts`, and ONLY on the
+#     specific author or committer line that name appears on -- never on the
+#     subject or body, where the same word is still a finding.
+#   kind: email -- the digest is of one lowercased address, exact. A match
+#     exempts the email-shaped pattern for that address wherever it appears
+#     in the commit (identity line, subject, or body).
+# `allowed_email_domains` is broader and address-agnostic: any address at
+# these domains clears the email-shaped pattern, anywhere in the commit. This
+# is deliberately wider than the exact digests above -- stated as a trade,
+# not an oversight -- because a noreply domain names the ISSUER, and the
+# issuer already prevents the address from resolving to anyone.
+#
+# THIS IS AN EXEMPTION, NOT A REPAIR, same as every other exemption in this
+# file. Per the rule stated at the top: before widening this block, state in
+# the commit how many identities and how many checks it removes from the
+# population. Today it exempts exactly one name (2 tokens: operator-given,
+# operator-family) and two addresses (plus their domains) -- nothing else in
+# a commit identity or message is exempt, and a personal or firm address
+# landing in either is still a hard finding.
+history_allowed_identities:
+  identities:
+    - id: repo-owner-display-name
+      # class: repository owner display name -- the account whose commits
+      # publish this repository.
+      kind: name
+      sha256: "c810644142402cca57c84f9fdf1e3ec5d3a2416766146d2a2db3c4b72c5ddcd0"
+      exempts: [operator-given, operator-family]
+    - id: repo-owner-github-noreply
+      # class: GitHub noreply address -- issued by GitHub to the publishing
+      # account so a real address never has to appear in a commit.
+      kind: email
+      sha256: "c779ed9279832543efa1994707942908fd245bac25d4c4d966365d697de642df"
+    - id: coauthor-noreply
+      # class: co-author noreply address -- the attribution trailer this
+      # project's own commit convention appends when an assistant authors or
+      # co-authors a commit.
+      kind: email
+      sha256: "cd29c5ac348a026a3ec5286890908fffb5bf6ab77f20672171be323a70c95026"
+  allowed_email_domains:
+    - users.noreply.github.com  # class: GitHub noreply address, any username
+    - anthropic.com             # class: co-author noreply address
 
 # A line carrying one of these markers is exempt. The marker is a TAG, not an
 # excuse: it must be followed by a reason on the same line, and the gate

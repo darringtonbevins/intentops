@@ -4,10 +4,8 @@
 
 **Governed Intent → Deterministic Execution**
 
-> **Status: PRE-RELEASE. PRIVATE SEED. Licence pending — see [LICENSE-PENDING.md](LICENSE-PENDING.md).**
-> This repository is not yet public and must not be made public until a `LICENSE` file
-> is ruled in (design: `docs/reports/intentops-oss/design/category-ruling.md` sect. 5.4;
-> decision card `oss-licence-apache-2-core`).
+> **Status: 0.1.0 public seed. Licence: [Apache-2.0](LICENSE). Copyright (c) 2026 Darrington Bevins -- see [NOTICE](NOTICE) and [PROVENANCE.md](PROVENANCE.md).**
+> This is the first public extraction of the framework: the governance core, the genesis state machine and the reference Claude Code saddle, with a clean history. Roadmap and open rulings are in `docs/`.
 
 IntentOps is a governance framework for AI agents: a deterministic, tier-classified
 action gate; a deliberative council and precedent store above it; and a genesis that
@@ -92,7 +90,7 @@ Full walkthrough, including what each step actually checks: `docs/quick-start.md
 | The genesis sequence (G0–G8, stand-down) | `docs/GENESIS.md` |
 | What an identity repo must contain | `docs/IDENTITY-REPO-CONTRACT.md` |
 | The runtime portability contract | `docs/SADDLE-CONTRACT.md` |
-| Licensing status | `LICENSE-PENDING.md` |
+| Licence | `LICENSE` (Apache-2.0) |
 | Contributing | `CONTRIBUTING.md` |
 | Security and disclosure | `SECURITY.md` |
 | Design of record | `docs/reports/intentops-oss/design/genesis-design.md` (private monorepo; not shipped here) |
