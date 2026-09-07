@@ -23,12 +23,12 @@ as lineage rather than rewriting them):
 | 2026-09-05 | Open-source program chartered; category ruled; genesis imprint authored |
 | 2026-09-06 | This seed repository created with a clean history |
 
-**Attestation (draft, for the holder's signature).** I, Darrington Bevins, am the author of the
+**Attestation.** I, Darrington Bevins, am the author of the
 work in this repository. I created it on my own initiative, on my own equipment and accounts,
 for my own use, and I hold the copyright in it. Contributions by others are recorded in the
 commit history under the contribution terms in `CONTRIBUTING.md`.
 
-Signed: ______________________ Date: ____________
+Signed: Darrington Bevins (typed, on his instruction "lets do these now", recorded by Lumina)  Date: 2026-09-07
 
 **How to verify.** Commit identities in this repository are the author's GitHub identity. Release
 tags are signed once the release root exists (`config/trust-roots.yaml`). The author's private
