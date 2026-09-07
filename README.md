@@ -199,6 +199,10 @@ intentops --node-root node --repo-root . genesis --dry-run --identity-repo new
 
 On Windows, activate with `.venv\Scripts\Activate.ps1`.
 
+From PyPI instead of a clone: `pip install intentops` (https://pypi.org/project/intentops/). The
+`genesis` and `verify` verbs still need a checkout of this repository for `--repo-root`, because
+provenance is verified against the repository's own signed imprint, not against the package.
+
 Two things that surprise people and are both correct: `--node-root` and `--repo-root`
 are **global** flags and must come before the subcommand, and the genesis command above
 **halts at G1** on any clone, because no trust-root ceremony has run for this build.
