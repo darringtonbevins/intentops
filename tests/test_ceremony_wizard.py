@@ -487,3 +487,22 @@ def _trust_material_findings(root: Path) -> List[str]:
 def _trust_material_scan(name: str, text: str) -> List[str]:
     """Scan one artifact's text for the same shapes."""
     return [str(f) for f in _trust_material().scan_text(name, text)]
+
+
+def test_public_ceremony_block_carries_no_names_places_or_hostnames():
+    """trust-roots.yaml is public: identifying facts point at the off-repo record instead
+    (OBSERVED 2026-09-07: the first sitting tripped the exposure gate on a name + hostname)."""
+    from intentops_core.ceremony.wizard import _ceremony_block
+    facts = {"minted_at": "2026-09-07T00:00:00Z", "assurance_level": "standard",
+             "operator": "operator states: Jane Q. Example", "witnessed_by": None,
+             "location": "operator states: 12 Example Street", "machine": "operator states: HOST-EXAMPLE-01",
+             "storage_medium": "operator states: the EXAMPLE stick", "passphrase_custody": "operator states: manager X",
+             "network": "operator states: cable unplugged; tool observed default_route_present=False"}
+    public = _ceremony_block(facts, public=True)
+    private = _ceremony_block(facts)
+    for leak in ("Jane Q. Example", "12 Example Street", "HOST-EXAMPLE-01", "EXAMPLE stick", "manager X"):
+        assert leak not in public, leak
+        assert leak in private, leak
+    assert "witnessed_by: null" in public          # an unstated fact stays visibly unstated
+    assert "assurance_level" in public and "standard" in public
+    assert "default_route_present=False" in public  # what the tool observed still travels

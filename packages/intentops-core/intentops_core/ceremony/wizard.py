@@ -581,8 +581,23 @@ def _pem_block(pem: str, indent: int = 4) -> str:
     return " " * indent + "public_key_pem: |\n" + body
 
 
-def _ceremony_block(facts: Dict[str, Any], indent: int = 4) -> str:
+_OFF_REPO_KEYS = ("operator", "witnessed_by", "location", "machine",
+                  "storage_medium", "passphrase_custody")
+_OFF_REPO_NOTE = ("recorded in the ceremony record kept with the private key, "
+                  "off-repository -- this file is public, and a person's name, a "
+                  "place or a hostname does not belong in it")
+
+
+def _ceremony_block(facts: Dict[str, Any], indent: int = 4, *,
+                    public: bool = False) -> str:
     """The ``ceremony:`` mapping, carrying the recorded facts verbatim.
+
+    With ``public=True`` (the trust-roots.yaml writer) the identifying facts
+    -- who, where, which machine, which medium, where the passphrase lives --
+    are replaced by a pointer to the off-repository ceremony record. OBSERVED
+    2026-09-07: the first real sitting wrote the operator's name and hostname
+    into the public file and the exposure gate refused the commit. Whether a
+    fact was STATED at all is still visible (null stays null).
 
     Every statement the tool could not observe is written as an attributed
     statement -- ``operator states ...`` -- beside whatever the tool DID
@@ -598,6 +613,8 @@ def _ceremony_block(facts: Dict[str, Any], indent: int = 4) -> str:
         if key not in facts:
             continue
         value = facts[key]
+        if public and key in _OFF_REPO_KEYS and value is not None:
+            value = _OFF_REPO_NOTE
         if value is None:
             lines.append(f"{pad}{key}: null")
         elif isinstance(value, (dict, list)):
@@ -664,7 +681,7 @@ def edit_trust_roots(text: str, *, root: Dict[str, Any],
                     applied[f"{current}.public_key_pem"] = 1
                     continue
                 if key == "ceremony":
-                    out.append(_ceremony_block(facts))
+                    out.append(_ceremony_block(facts, public=True))
                     applied[f"{current}.ceremony"] = 1
                     skipping_ceremony = True
                     continue
