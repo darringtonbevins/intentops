@@ -43,3 +43,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# StoreLock siblings left by the ceremony wizard (empty pid markers, never content)
+*.lock

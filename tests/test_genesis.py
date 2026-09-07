@@ -1,9 +1,18 @@
 """Tests for the genesis state machine, its phases, and the node CLI.
 
 Every test runs against a TEMPORARY node root: the repository is read, never
-written. The one full run is a ``--dry-run`` with the unsigned-development
-flag set, which is the only shape that can complete today -- no release root
-has been minted, so a real run correctly HALTs at G1.
+written.
+
+Two repository shapes are exercised, deliberately, because the seed ships in
+one and this build is in the other. The LIVE tree is MINTED -- the release-root
+ceremony ran on 2026-09-07 -- so a dry run reaches G7 with no development flag
+at all, and that is asserted here as the ceremony's own regression guard. The
+PLACEHOLDER shape is the one every fresh clone is in, and the refusals that
+govern it (G1 halting, ``verify`` reporting unverified, two placeholders never
+reading as agreement) stay reachable through the ``placeholder_tree`` fixture
+in ``conftest.py``, which builds a pre-ceremony tree of its own in ``tmp_path``
+and patches the compiled pin to match. A suite that only proved a minted build
+passes would have retired those refusals rather than kept them.
 """
 
 from __future__ import annotations
@@ -144,8 +153,21 @@ def test_the_unsigned_dev_flag_opens_a_t3_tagout(dry_run):
     assert entry["chain"][0]["reenergize_when"]
 
 
-def test_provenance_record_is_never_verified_under_the_dev_flag(dry_run):
-    _run, node = dry_run
+def test_provenance_record_is_never_verified_under_the_dev_flag(
+        tmp_path, placeholder_tree):
+    """The flag lets a node proceed; it never makes an unverified thing verified.
+
+    Run against a PRE-CEREMONY tree, because that is the only shape in which
+    the flag has anything to downgrade. On the minted tree there are no absent
+    faculties to name, so this assertion would pass vacuously and stop being a
+    test of the downgrade rule at all.
+    """
+    node = tmp_path / "unverified-node"
+    run = machine_mod.run_genesis(
+        placeholder_tree, node, identity_repo="new", dry_run=True,
+        allow_unsigned_dev=True, saddle="claudecode",
+        isatty=lambda: False, out=lambda _m: None)
+    assert not run.halted, f"{run.halt_reason} / {run.remedy}"
     records = json.loads((node / ".intentops" / "genesis"
                           / "provenance-record.json").read_text(encoding="utf-8"))
     assert isinstance(records, list) and records
@@ -154,14 +176,51 @@ def test_provenance_record_is_never_verified_under_the_dev_flag(dry_run):
     assert records[-1]["faculties_absent"]
 
 
+def test_the_minted_tree_records_a_verified_provenance(dry_run):
+    """The positive half: this build's own G1 answer sheet, on the live tree.
+
+    The regression guard for the ceremony of 2026-09-07. If a carrier is
+    edited, rotated or reverted and the three stop agreeing, this is the test
+    that says so.
+    """
+    _run, node = dry_run
+    records = json.loads((node / ".intentops" / "genesis"
+                          / "provenance-record.json").read_text(encoding="utf-8"))
+    record = provenance_mod.verify_provenance(REPO)
+    signature = next(c for c in record.checks
+                     if c.id == "G1.7-imprint-signature")
+    assert signature.outcome == "PASS", signature.reason
+    assert record.verified is True, [c.to_row() for c in record.blocking]
+    assert trust_pin.pin_is_minted() is True
+    # and the run that actually happened agrees with the fresh reading
+    assert records[-1]["verified"] is True
+    assert records[-1]["faculties_absent"] == []
+
+
+def test_the_minted_tree_reaches_g7_without_the_dev_flag(tmp_path):
+    """A dry run on this build needs no development flag. Before the ceremony
+    it needed one, and G1 halted without it -- which is what
+    ``test_without_the_dev_flag_g1_halts`` still proves, on a tree that has
+    not been through a ceremony."""
+    run = machine_mod.run_genesis(
+        REPO, tmp_path / "minted-node", identity_repo="new", dry_run=True,
+        allow_unsigned_dev=False, saddle="claudecode",
+        isatty=lambda: False, out=lambda _m: None)
+    assert not run.halted, f"{run.halt_reason} / {run.remedy}"
+    assert run.final_state == "G7"
+    assert not (tmp_path / "minted-node" / machine_mod._DEV_TAGOUT_CARRIER
+                ).exists(), "no development tagout is opened on a minted build"
+
+
 # ---------------------------------------------------------------------------
 # the refusals
 # ---------------------------------------------------------------------------
 
 
-def test_without_the_dev_flag_g1_halts(tmp_path):
+def test_without_the_dev_flag_g1_halts(tmp_path, placeholder_tree):
+    """A clone whose ceremony has not run refuses to proceed past G1."""
     run = machine_mod.run_genesis(
-        REPO, tmp_path / "n", identity_repo="new", dry_run=True,
+        placeholder_tree, tmp_path / "n", identity_repo="new", dry_run=True,
         allow_unsigned_dev=False, saddle="claudecode",
         isatty=lambda: False, out=lambda _m: None)
     assert run.halted and run.final_state == "HALT"
@@ -224,13 +283,27 @@ def test_empty_roots_list_halts_where_an_empty_estate_would_not(tmp_path):
     assert first.outcome == "HALT" and "verify nothing" in first.reason
 
 
-def test_two_placeholder_pins_never_read_as_agreement():
+def test_two_placeholder_pins_never_read_as_agreement(placeholder_pin):
+    """The shipped pin state, asserted on a pin this test sets itself.
+
+    ``placeholder_pin`` is required rather than incidental: on this build the
+    compiled pin is minted, and reading the live constant would turn the
+    assertion into a check of the build rather than of the rule.
+    """
     outcome, reason = trust_pin.compare(trust_pin.PLACEHOLDER_FINGERPRINT)
     assert outcome == "HALT"
     assert "placeholder" in reason
     assert trust_pin.pin_is_minted() is False
     assert trust_pin.is_real_fingerprint("sha256:" + "a" * 64) is True
     assert trust_pin.is_real_fingerprint("sha256:PLACEHOLDER") is False
+
+
+def test_a_minted_pin_agrees_only_with_its_own_fingerprint():
+    """The minted half of the same rule, on the live compiled pin."""
+    assert trust_pin.pin_is_minted() is True
+    assert trust_pin.compare(trust_pin.ROOT_FINGERPRINT)[0] == "PASS"
+    assert trust_pin.compare("sha256:" + "c" * 64)[0] == "HALT"
+    assert trust_pin.compare(trust_pin.PLACEHOLDER_FINGERPRINT)[0] == "HALT"
 
 
 def test_an_unbound_identity_repo_halts_rather_than_defaulting(tmp_path):
@@ -256,9 +329,13 @@ def test_a_human_gate_refuses_a_non_tty_context(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_stand_down_works_mid_g1_and_needs_no_reason(tmp_path):
+def test_stand_down_works_mid_g1_and_needs_no_reason(tmp_path,
+                                                     placeholder_tree):
+    """Standing down mid-G1 needs a run that stops inside G1, so this uses a
+    pre-ceremony tree: on the minted tree G1 passes and there is no mid-phase
+    to stand down from."""
     node = tmp_path / "n"
-    run = machine_mod.run_genesis(REPO, node, identity_repo="new",
+    run = machine_mod.run_genesis(placeholder_tree, node, identity_repo="new",
                                   dry_run=True, allow_unsigned_dev=False,
                                   saddle="claudecode", isatty=lambda: False,
                                   out=lambda _m: None)
@@ -268,7 +345,8 @@ def test_stand_down_works_mid_g1_and_needs_no_reason(tmp_path):
     assert "OFF, not broken" in result["banner"]
     assert standdown_mod.is_stood_down(node)
 
-    again = machine_mod.run_genesis(REPO, node, identity_repo="new",
+    again = machine_mod.run_genesis(placeholder_tree, node,
+                                    identity_repo="new",
                                     dry_run=True, allow_unsigned_dev=True,
                                     saddle="claudecode", isatty=lambda: False,
                                     out=lambda _m: None)
@@ -366,11 +444,21 @@ def test_cli_gate_selftest_proves_the_gate_can_refuse(capsys):
     assert "can refuse and can allow" in out
 
 
-def test_cli_verify_reports_unverified_and_exits_one(capsys):
-    assert cli.main(["--repo-root", str(REPO), "verify"]) == 1
+def test_cli_verify_reports_unverified_and_exits_one(capsys, placeholder_tree):
+    """On a clone whose ceremony has not run, `verify` says so and exits 1."""
+    assert cli.main(["--repo-root", str(placeholder_tree), "verify"]) == 1
     out = capsys.readouterr().out
     assert "verified: False" in out
     assert "placeholder" in out
+
+
+def test_cli_verify_on_the_minted_tree_reports_verified_and_exits_zero(capsys):
+    """The positive half, on the live tree: a minted build says so and exits 0."""
+    assert cli.main(["--repo-root", str(REPO), "verify"]) == 0
+    out = capsys.readouterr().out
+    assert "verified: True" in out
+    assert "pin: minted" in out
+    assert "placeholder" not in out
 
 
 def test_cli_verify_selftest_runs_every_instrument(capsys):

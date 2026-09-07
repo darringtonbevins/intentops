@@ -25,8 +25,13 @@ PURPOSE
 WRITE MODEL
     None. Every test reads, or writes only inside a pytest `tmp_path`. Keys are
     generated at test time in temp directories and never written into the tree.
-    The two tests that need a minted pin mutate `trust_pin` module state and
-    restore it in a fixture, because that state is process-global.
+    Tests that need a particular pin state mutate `trust_pin` module state and
+    restore it in a fixture, because that state is process-global. Both
+    directions are now explicit: `minted_pin` for the verification paths, and
+    the shared `placeholder_pin` fixture for the refusal that only exists
+    before a ceremony has run. Since 2026-09-07 this build's compiled pin is
+    minted, so a test that read the live constant would be asserting the state
+    of the build rather than the rule under test.
 
 BLIND SPOTS
     - These prove the verifier can distinguish a good signature from a bad one.
@@ -160,7 +165,8 @@ def test_a_signature_by_an_unknown_key_is_a_contradiction(tmp_path: Path,
     assert check.outcome == "HALT" and check.contradiction is True
 
 
-def test_a_signed_manifest_still_refuses_on_a_placeholder_pin(tmp_path: Path) -> None:
+def test_a_signed_manifest_still_refuses_on_a_placeholder_pin(
+        tmp_path: Path, placeholder_pin: None) -> None:
     """No minted root means the answer is REFUSE -- never PASS, never HALT."""
     private = _keypair()
     _write_manifest(tmp_path, "00")

@@ -998,11 +998,21 @@ def selftest() -> Tuple[bool, str]:
                 expect("no-signing-root-refuses",
                        _check_imprint_signature(root, {"roots": []}).outcome
                        == "REFUSE")
+                # The placeholder side of the same question. It sets the pin
+                # state it is testing rather than inheriting the build's:
+                # this path fired for free while the shipped pin was a
+                # placeholder, and went dark the day the ceremony ran -- a
+                # detector that stops firing because the world changed under
+                # it is indistinguishable from a broken one.
+                trust_pin.PIN_STATE = "placeholder"
+                trust_pin.ROOT_FINGERPRINT = trust_pin.PLACEHOLDER_FINGERPRINT
+                _write_manifest(real_sig)
+                expect("signed-manifest-refuses-on-a-placeholder-pin",
+                       _check_imprint_signature(root, signed_doc).outcome
+                       == "REFUSE")
             finally:
                 trust_pin.PIN_STATE, trust_pin.ROOT_FINGERPRINT = (
                     saved_state, saved_fp)
-            expect("signed-manifest-refuses-on-a-placeholder-pin",
-                   _check_imprint_signature(root, signed_doc).outcome == "REFUSE")
 
     report = (f"provenance selftest: {len(fired)} paths fired, "
               f"{len(failures)} failed"

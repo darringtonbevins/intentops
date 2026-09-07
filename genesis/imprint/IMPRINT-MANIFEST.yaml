@@ -165,7 +165,11 @@ signature_semantics:
     - "autonomy -- tiers are local; a grant signed by another operator's root raises nothing"
     - "memory, wishes, twin priors, estate data, or the operator's identity"
 
-signatures: []
+signatures:
+  - key_id: 71F92EDD565DB288
+    algorithm: ed25519
+    scope: "the GENERATED artifacts block of genesis/imprint/IMPRINT-MANIFEST.yaml, from the BEGIN marker line through the END marker line inclusive, newline-normalised to LF, encoded UTF-8"
+    signature: "5146abac616322c6887e7a24e6653573afe324c687b6cfd56a7f58aea119ef8bf259ddf83e01e3f55dc6d85d204648cfc2388370946208e8d541197dada32f0a"
 
 # ---------------------------------------------------------------------------
 # GENERATED -- correct the files, then run build_manifest.py --write.

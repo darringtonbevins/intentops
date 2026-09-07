@@ -21,6 +21,12 @@ WRITE MODEL
     the happy-path test, because a test that could mint the live root would be
     a worse hazard than the defect it is checking for.
 
+    Since 2026-09-07 the live tree is MINTED, so the copy is additionally
+    rewritten back to the pre-ceremony shape by `conftest.build_placeholder_tree`
+    before the wizard sees it. That is not a weakening: a ceremony can only be
+    run on a tree that has not had one, and the wizard correctly refuses at
+    `sign-imprint` on an already-signed manifest.
+
 BLIND SPOTS
     - These prove the mechanism round-trips on throwaway keys. They prove
       nothing about whether a real ceremony was performed offline, witnessed,
@@ -38,7 +44,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +51,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+import conftest
 from intentops_core.ceremony import wizard as wiz
 from intentops_core.genesis import provenance as prov
 
@@ -57,10 +63,10 @@ pytestmark = pytest.mark.skipif(not prov.crypto_available(),
 #: What a working clone needs for `build_manifest --check`, G1, and a genesis
 #: dry-run. Declared rather than "copy everything": `tests/` and `build/` are
 #: several times the size of the rest and nothing under test reads them.
-COPY_ENTRIES = (
-    "packages", "config", "genesis", "docs", "scripts", "estate", "identity",
-    "deploy", "VERSION", "pyproject.toml", "README.md", "GENESIS.md",
-)
+#: Owned by `conftest`, so there is one definition of a working clone and an
+#: entry added for the ceremony cannot go missing from the other pre-ceremony
+#: tests.
+COPY_ENTRIES = conftest.COPY_ENTRIES
 
 PASSPHRASE = "correct horse battery staple"
 
@@ -78,18 +84,16 @@ PREFLIGHT_ANSWERS = [
 
 
 def _copy_clone(dest: Path) -> Path:
-    dest.mkdir(parents=True, exist_ok=True)
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
-                                    ".ruff_cache")
-    for name in COPY_ENTRIES:
-        src = REPO_ROOT / name
-        if not src.exists():  # pragma: no cover - the clone is complete
-            continue
-        if src.is_dir():
-            shutil.copytree(src, dest / name, ignore=ignore)
-        else:
-            shutil.copy2(src, dest / name)
-    return dest
+    """A throwaway clone in the PRE-CEREMONY shape.
+
+    The ceremony mints a root that does not exist yet and rewrites the three
+    carriers that pin it, so the only tree it can honestly run against is one
+    that has not been through a ceremony. Since 2026-09-07 this repository has,
+    which is why the copy is rewritten back rather than taken as it stands: run
+    against the live tree the wizard would refuse at `sign-imprint`, because
+    the manifest it must sign is already signed.
+    """
+    return conftest.build_placeholder_tree(dest, source=REPO_ROOT)
 
 
 @pytest.fixture()

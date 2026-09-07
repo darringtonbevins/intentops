@@ -93,12 +93,9 @@ these three carriers: a tool that could rewrite the pin unattended is the coup
 the three carriers exist to make visible.
 
 <!-- BEGIN release-root-fingerprint -->
-No ceremony has run for this build, so there is no fingerprint here to compare
-against. This is a PLACEHOLDER and not a weak pin: it is no pin at all, and
-G1.3 halts on it rather than letting two placeholders compare equal and read as
-agreement.
+Minted 2026-09-07. Compare this against the project site, the signed git tag and the release announcement before trusting a first clone:
 
-    intentops-root:v1:sha256:PLACEHOLDER:did:key:PLACEHOLDER
+    intentops-root:v1:sha256:4a9c193315845493c57354235f9655fd2e8f6b3b125da131bede5c4874071a1c:did:key:z6MksgSfTSu4xXwZjw4eVmbKuKis9ahVGRSDNtwDKBQ5DjcW
 
 <!-- END release-root-fingerprint -->
 

@@ -1,7 +1,9 @@
 # IntentOps genesis trust roots -- PUBLIC MATERIAL ONLY.
 # A private key appearing anywhere in this file is a P0 incident, not a bug.
 #
-# STATUS: every root below is `status: proposed`. G1 (the offline provenance
+# STATUS: MINTED 2026-09-07 (delegated ceremony, standard assurance -- see the ceremony
+# record on the medium and the `ceremony:` blocks below). History of this header: every
+# root below WAS `status: proposed` until then. G1 (the offline provenance
 # check run at every boot, see docs/GENESIS.md) HALTS on every root in this
 # file until the release root is minted in the operator's own ceremony
 # (docs/TRUST-CEREMONY.md -- a witnessed, offline, irreversible act that
@@ -35,20 +37,23 @@ as_of: "2026-09-06"
 # placeholder rather than omitted, so the pin-check step (G1.2) has something
 # concrete to compare against and fail loudly on, instead of skipping itself
 # on an absent field.
-pinned_fingerprint: "sha256:PLACEHOLDER"
+pinned_fingerprint: "sha256:4a9c193315845493c57354235f9655fd2e8f6b3b125da131bede5c4874071a1c"
 
 roots:
   - id: R-INTENTOPS
     role: release_root
-    status: proposed          # flips to `active` only after the ceremony
+    status: "active"
     algorithm: ed25519
-    public_key_pem: "PLACEHOLDER-NOT-A-KEY"
-    fingerprint: "sha256:PLACEHOLDER"
-    did: "did:key:PLACEHOLDER"
+    public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEAxIh8nlj0ISqf0Cphd+Hqx2a4uUDSoKxaLwFMGKl2BvM=
+      -----END PUBLIC KEY-----
+    fingerprint: "sha256:4a9c193315845493c57354235f9655fd2e8f6b3b125da131bede5c4874071a1c"
+    did: "did:key:z6MksgSfTSu4xXwZjw4eVmbKuKis9ahVGRSDNtwDKBQ5DjcW"
     certificate_pem: null      # optional X.509 profile; his ruling, open question
-    key_id: "PLACEHOLDER16"
-    valid_from: "2026-01-01"   # PLACEHOLDER
-    valid_until: "2036-01-01"  # PLACEHOLDER -- 10y validity once minted
+    key_id: "4A9C193315845493"
+    valid_from: "2026-09-07"
+    valid_until: "2036-09-07"
     issued_by: self
     signs: [trust_roots_file, revocation_list]
     revocation:
@@ -60,22 +65,35 @@ roots:
       superseded_by: null
       overlap_until: null
     ceremony:
-      minted_at: null           # null until the ceremony runs -- never a placeholder date once real
+      minted_at: "2026-09-07"
       witnessed_by: null
-      record: null   # written at ceremony time under docs/ceremonies/; see docs/TRUST-CEREMONY.md
-    evidence: "[PLACEHOLDER] no ceremony has occurred; this entry is a shape, not a key"
+      record: "held with the private key medium as ceremony-record-2026-09-07.md"
+      assurance_level: "standard"
+      operator: "operator states: the operator -- delegated to the operator's AI operative on the operator's instruction, 2026-09-07 ('make it so')"
+      location: "operator states: the operator's workstation; the operator was not at the keyboard for the run"
+      machine: "operator states: the operator's daily-driver workstation, other agents running -- NOT a clean host; recorded as such"
+      network: "operator states: online; the operator declined an offline sitting ('progress over perfection'); measured interfaces are recorded by the tool; tool observed default_route_present=True, resolved_local_addresses=10"
+      storage_medium: "operator states: the Seed's SHUTTLE partition (Corsair Survivor, cleartext exFAT, S:\\ceremony); the key file is passphrase-wrapped by the tool"
+      passphrase_custody: "operator states: Windows Credential Manager under the operator's account, generic credential IntentOps/ReleaseRoot/passphrase; stored by the runner, never printed"
+      tool_commit: "4f0f6c7aef43f719b3340388eeb16d0f63d8e00b"
+      tool_selftest: "mint_release_root --selftest PASS"
+      observed: {"ci_env_set": false, "default_route_present": true, "platform": "win32", "python": "3.11.15", "resolved_local_addresses": 10}
+    evidence: "[OBSERVED 2026-09-07] minted by intentops ceremony at assurance level standard; record kept with the key medium as ceremony-record-2026-09-07.md"
 
   - id: I-INTENTOPS-REL-2026
     role: release_intermediate
-    status: proposed
+    status: "active"
     algorithm: ed25519
-    public_key_pem: "PLACEHOLDER-NOT-A-KEY"
-    fingerprint: "sha256:PLACEHOLDER"
-    did: "did:key:PLACEHOLDER"
+    public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEA912CMA5GyxQrPNHETp/1yKZ6KTj5lFIKaaXWqL1aAds=
+      -----END PUBLIC KEY-----
+    fingerprint: "sha256:71f92edd565db2888a43fdd22bef4c5106f97e33bfc78aab005c092bb0f39ab3"
+    did: "did:key:z6Mkw6sSqU2iAnNHHnVa7ees1jdCt1DCorahn6xeTyuhQcZQ"
     certificate_pem: null
-    key_id: "PLACEHOLDER16"
-    valid_from: "2026-01-01"   # PLACEHOLDER
-    valid_until: "2027-04-01"  # PLACEHOLDER -- 15 months, 3-month overlap by design
+    key_id: "71F92EDD565DB288"
+    valid_from: "2026-09-07"
+    valid_until: "2027-12-07"
     issued_by: R-INTENTOPS
     signs: [invariant_bundle, imprint_manifest, archetype_catalogue, release_artifact]
     revocation:
@@ -87,10 +105,20 @@ roots:
       superseded_by: null
       overlap_until: null
     ceremony:
-      minted_at: null
+      minted_at: "2026-09-07"
       witnessed_by: null
-      record: null   # written at ceremony time under docs/ceremonies/; see docs/TRUST-CEREMONY.md
-    evidence: "[PLACEHOLDER] signed alongside R-INTENTOPS in the same sitting, once that sitting occurs"
+      record: "held with the private key medium as ceremony-record-2026-09-07.md"
+      assurance_level: "standard"
+      operator: "operator states: the operator -- delegated to the operator's AI operative on the operator's instruction, 2026-09-07 ('make it so')"
+      location: "operator states: the operator's workstation; the operator was not at the keyboard for the run"
+      machine: "operator states: the operator's daily-driver workstation, other agents running -- NOT a clean host; recorded as such"
+      network: "operator states: online; the operator declined an offline sitting ('progress over perfection'); measured interfaces are recorded by the tool; tool observed default_route_present=True, resolved_local_addresses=10"
+      storage_medium: "operator states: the Seed's SHUTTLE partition (Corsair Survivor, cleartext exFAT, S:\\ceremony); the key file is passphrase-wrapped by the tool"
+      passphrase_custody: "operator states: Windows Credential Manager under the operator's account, generic credential IntentOps/ReleaseRoot/passphrase; stored by the runner, never printed"
+      tool_commit: "4f0f6c7aef43f719b3340388eeb16d0f63d8e00b"
+      tool_selftest: "mint_release_root --selftest PASS"
+      observed: {"ci_env_set": false, "default_route_present": true, "platform": "win32", "python": "3.11.15", "resolved_local_addresses": 10}
+    evidence: "[OBSERVED 2026-09-07] minted in the same sitting as R-INTENTOPS; signs the imprint manifest"
 
 # `signs` closed vocabulary (an undeclared value is a hard exit, never a
 # default of everything-applies -- no-silent-failures.md rule 6):

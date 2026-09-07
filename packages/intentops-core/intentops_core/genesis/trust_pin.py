@@ -59,11 +59,11 @@ PLACEHOLDER_FINGERPRINT = "sha256:PLACEHOLDER"
 #: The compiled pin. Until the root ceremony runs -- a witnessed, offline,
 #: irreversible act only the project's human operator may perform -- this is
 #: deliberately the placeholder, and :func:`pin_is_minted` returns False.
-ROOT_FINGERPRINT: str = PLACEHOLDER_FINGERPRINT
+ROOT_FINGERPRINT: str = "sha256:4a9c193315845493c57354235f9655fd2e8f6b3b125da131bede5c4874071a1c"
 
 #: ``placeholder`` | ``minted``. A third value is not permitted: a pin is
 #: either the published one or it is not one at all.
-PIN_STATE: str = "placeholder"
+PIN_STATE: str = "minted"
 
 #: sha256 over the DER SPKI bytes, never over the PEM text.
 FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")

@@ -306,20 +306,28 @@ def test_the_unverified_banner_is_printed_exactly_once(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_every_blocking_reason_reaches_the_halt_line(tmp_path):
+def test_every_blocking_reason_reaches_the_halt_line(tmp_path,
+                                                     placeholder_tree):
+    """Run against a PRE-CEREMONY tree, not the live one.
+
+    The truncation this guards against is only observable where G1 produces
+    more than three blocking findings, and since the ceremony of 2026-09-07 the
+    live tree produces none at all. A test that kept reading the live tree
+    would have gone green by having nothing left to truncate.
+    """
     run = machine_mod.run_genesis(
-        REPO, tmp_path / "n", identity_repo="new", dry_run=True,
+        placeholder_tree, tmp_path / "n", identity_repo="new", dry_run=True,
         allow_unsigned_dev=False, saddle="claudecode",
         isatty=lambda: False, out=lambda _m: None)
     assert run.halted
-    record = provenance_mod.verify_provenance(REPO)
+    record = provenance_mod.verify_provenance(placeholder_tree)
     for check in record.blocking:
         assert check.id in run.halt_reason, (
             f"{check.id} was found and did not reach the line an operator "
             "reads -- the truncation defect")
     assert len(record.blocking) > 3, (
-        "this repository must produce more than three blocking findings for "
-        "this test to be able to catch a three-item slice")
+        "a pre-ceremony tree must produce more than three blocking findings "
+        "for this test to be able to catch a three-item slice")
 
 
 # ---------------------------------------------------------------------------

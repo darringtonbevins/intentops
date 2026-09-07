@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -89,15 +90,37 @@ def test_every_yaml_declares_schema_and_as_of(name: str) -> None:
     assert "as_of" in data, f"{name} missing required `as_of` field (honesty.md Belief Currency)"
 
 
-def test_trust_roots_roots_nonempty_and_placeholder() -> None:
+def test_trust_roots_roots_nonempty_and_minted() -> None:
+    """The release-root ceremony ran on 2026-09-07, so this asserts the MINTED
+    shape -- strictly, because "not a placeholder" is a far weaker claim than
+    "a well-formed key".
+
+    This test asserted the opposite until that day: every root `proposed`,
+    every fingerprint, key and DID a literal PLACEHOLDER. That shape has not
+    stopped mattering and its refusals have not been retired; they moved to the
+    `placeholder_tree` fixture in `tests/conftest.py`, which builds a
+    pre-ceremony tree of its own rather than reading these live carriers.
+    """
     data = _load_yaml("trust-roots.yaml")
     roots = data["roots"]
     assert len(roots) >= 1, "an empty roots list must be a HALT upstream, never a default"
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", data["pinned_fingerprint"]), \
+        "the pinned fingerprint must be a real sha256 over the DER SPKI bytes"
     for root in roots:
-        assert root["status"] == "proposed", "no root may ship active until the operator's ceremony runs"
-        assert "PLACEHOLDER" in root["fingerprint"]
-        assert "PLACEHOLDER" in root["public_key_pem"]
-        assert "PLACEHOLDER" in root["did"]
+        rid = root["id"]
+        assert root["status"] == "active", f"{rid} is not active after the ceremony"
+        assert re.fullmatch(r"sha256:[0-9a-f]{64}", root["fingerprint"]), rid
+        assert root["public_key_pem"].strip().startswith(
+            "-----BEGIN PUBLIC KEY-----"), rid
+        assert root["did"].startswith("did:key:z"), rid
+        assert re.fullmatch(r"[0-9A-F]{16}", root["key_id"]), rid
+        # nothing anywhere in the record may still be a placeholder: a root
+        # that is half minted is the partial tamper G1.3 and G1.4 exist to catch
+        assert "PLACEHOLDER" not in yaml.safe_dump(root), rid
+        assert root["ceremony"]["minted_at"], f"{rid} claims no ceremony date"
+    assert data["pinned_fingerprint"] == next(
+        r["fingerprint"] for r in roots if r["role"] == "release_root"), \
+        "the pin must name the release root, not some other root"
     assert data["trust_policy"]["unsigned_bundle"] == "refuse"
     assert data["trust_policy"]["crypto_unavailable"] == "halt"
     assert data["trust_policy"]["expired_root"] == "refuse"
