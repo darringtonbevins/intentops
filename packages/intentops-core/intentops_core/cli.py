@@ -167,6 +167,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_metabolism_parser(sub)
 
+    # Same seam again. The ceremony is the most dangerous verb this CLI carries
+    # -- it mints the project's publishing key -- so it lives entirely in its
+    # own package, where a defect in it cannot strand `genesis` or `verify`.
+    from .ceremony.cli import add_parser as _add_ceremony_parser
+
+    _add_ceremony_parser(sub)
+
     r = sub.add_parser("route",
                        help="resolve a routing assignment (shape + estate ring)")
     r.add_argument("--shape", default=None,
@@ -677,6 +684,13 @@ def _cmd_metabolism(args: argparse.Namespace) -> int:
     return run_metabolism(args, Path(args.node_root))
 
 
+def _cmd_ceremony(args: argparse.Namespace) -> int:
+    """Delegate to the ceremony surface. Attended-only; it refuses otherwise."""
+    from .ceremony.cli import run as run_ceremony
+
+    return run_ceremony(args, _repo_root(args))
+
+
 _COMMANDS = {
     "genesis": _cmd_genesis,
     "doctor": _cmd_doctor,
@@ -689,6 +703,7 @@ _COMMANDS = {
     "substrate": _cmd_substrate,
     "loops": _cmd_loops,
     "metabolism": _cmd_metabolism,
+    "ceremony": _cmd_ceremony,
 }
 
 

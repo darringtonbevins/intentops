@@ -81,6 +81,32 @@ Every blocking reason is printed, id-tagged, with no truncation; the full record
 appended to `.intentops/genesis/provenance-record.json`. A record produced under the
 override is never marked verified, at any later point, for the life of that record.
 
+## The release-root fingerprint
+
+Carrier #3 of three. The full record lives in `config/trust-roots.yaml`, the
+compiled constant in the genesis `trust_pin` module, and the human-readable
+copy is the block below. G1 compares them, and a disagreement is a HALT.
+
+The ceremony that fills this in is `docs/TRUST-CEREMONY.md`, and the wizard
+that walks an operator through it is `intentops ceremony`. Nothing else writes
+these three carriers: a tool that could rewrite the pin unattended is the coup
+the three carriers exist to make visible.
+
+<!-- BEGIN release-root-fingerprint -->
+No ceremony has run for this build, so there is no fingerprint here to compare
+against. This is a PLACEHOLDER and not a weak pin: it is no pin at all, and
+G1.3 halts on it rather than letting two placeholders compare equal and read as
+agreement.
+
+    intentops-root:v1:sha256:PLACEHOLDER:did:key:PLACEHOLDER
+
+<!-- END release-root-fingerprint -->
+
+Three carriers make a PARTIAL tamper visible. They do not make a TOTAL
+substitution visible, and nothing in this repository can. Compare the string
+above against the project site, the signed git tag and the release
+announcement before trusting a first clone.
+
 ## What a node carries out of genesis
 
 Two facts a fresh node must be able to answer about itself from its boot corpus

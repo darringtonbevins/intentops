@@ -170,6 +170,7 @@ _JUSTIFIED_PATH_EXEMPTIONS = {
     "readme.md": frozenset({"operator-given", "operator-family"}),
     # release evidence names the copyright holder beside the commit it timestamps
     "release/v0.1.0-commit.txt": frozenset({"operator-given", "operator-family"}),
+    "release/v0.3.0-commit.txt": frozenset({"operator-given", "operator-family"}),
 }
 
 

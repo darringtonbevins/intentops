@@ -51,6 +51,22 @@ rules, `.intentops-rules/`, against the imprint bundle named in
 reading is what the project published. The MCP saddle's bearer record is
 `.intentops/trust/mcp-saddle-auth.json` (`intentops_saddle_mcp/auth.py`).
 
+## The release-root ceremony
+
+`intentops ceremony` is the attended wizard that performs the sitting in
+`docs/TRUST-CEREMONY.md`: it mints `R-INTENTOPS` and `I-INTENTOPS-REL-2026`,
+signs the imprint manifest, and applies the three-carrier edit as ONE reviewed
+change. It is attended-only -- it refuses a non-TTY, refuses when `CI` is set,
+treats EOF as a refusal, and is never run from a loop tick, a workflow leg, a
+subagent, a container entrypoint, or a scheduled task. It stages and never
+commits. Every step journals to `.intentops/ceremony/ceremony-state.json` and
+to a copy beside the key, carrying PUBLIC FIELDS ONLY, so `--resume` continues
+at the step that failed without re-minting a key that already exists. Every
+failure prints a numbered row from `docs/CEREMONY-REMEDIATION.md`, including
+what is safe to paste when asking for help. The primitives it drives are
+`scripts/genesis/mint_release_root.py`; the module is
+`intentops_core/ceremony/wizard.py`.
+
 ## The gate and the audit trail
 
 `intentops_core/gate/classify.py` holds the tier ladder and the

@@ -44,6 +44,67 @@ carried **1,327 tests and 42 probes** above a section of wave-4 entries -- a mea
 standing over work it had not measured, which is the shape this file's first rule exists
 to refuse.
 
+### Added — wave 5
+
+- **`intentops ceremony` — the release-root ceremony as an attended, resumable
+  wizard** (`packages/intentops-core/intentops_core/ceremony/`,
+  [`docs/CEREMONY-REMEDIATION.md`](docs/CEREMONY-REMEDIATION.md)).
+  [`docs/TRUST-CEREMONY.md`](docs/TRUST-CEREMONY.md) was correct and unusable
+  under pressure: ten steps, three carriers that must move together, two keys,
+  one signature, and an acceptance test that fails silently if any of it is done
+  out of order. A runbook nobody can execute is a control that exists on paper.
+  The wizard states, at every screen, what it is about to do, why the runbook
+  says so, and what it will NOT do; it journals every step so a failure at step
+  seven costs neither steps one to six nor a key already minted; and every
+  failure prints a numbered remedy naming what is safe to paste when asking for
+  help.
+  - **Attended-only, by the same test the primitives use.** Non-TTY refused,
+    `CI` refused separately and first, EOF treated as a refusal. It is never run
+    from a loop tick, a workflow leg, a subagent, a container entrypoint, or a
+    scheduled task, and its first screen says so.
+  - **Two assurance levels, recorded and never faked.** `standard` and `full`.
+    The runbook's preconditions — offline, witnessed, clean host — are properties
+    of the ROOM, and no program can observe them, so every answer is recorded as
+    an attributed statement beside what the tool could actually measure:
+    *"network: operator states cable unplugged; tool observed
+    default_route_present=false"*. Choosing `full` and naming no witness records
+    the sitting as `standard`, because that is the honest label.
+  - **It stages and never commits**, and it writes the three carriers only after
+    the operator has seen the diff and typed `apply the three-carrier edit`. It
+    reuses `scripts/genesis/mint_release_root.py` rather than forking it: two
+    definitions of a canonical payload is how a signature that verifies on the
+    signer's machine fails on every other one.
+  - **The acceptance test runs in a fresh process with the development flag
+    stripped.** G1.7 must read `PASS` against the edited tree, and a throwaway
+    node must reach **G7** without the flag. Recorded run in a temporary clone:
+    all nine G1 checks PASS, `final state: G7`, `probes 48/48 PASS, 0 ABSENT`.
+
+### Fixed — wave 5
+
+Both defects below were found by RUNNING the ceremony end to end, and both sat
+in the one step that has no later gate to catch it. Neither was reachable by any
+existing test, and each is now closed by a case in
+`mint_release_root.py --selftest` (**11 paths fire, 0 fail**).
+
+- **Signing the imprint corrupted the manifest.** `_with_signature` replaced the
+  first `signatures: []` SUBSTRING in the file. The shipped manifest explains its
+  own empty list, in backticks, in a header comment on line 7 — so the real
+  ceremony would have rewritten that comment and produced a manifest that does
+  not parse. G1.7 then reported `unparseable`, which reads as a tampered bundle
+  rather than as a signer that corrupted what it signed. The match is now
+  anchored to a whole line at column zero, and two top-level slots are refused
+  rather than chosen between.
+- **Signing left a lock file inside the hash-audited bundle.** The lock was
+  written as a sibling of the manifest, inside `genesis/imprint` — the house
+  convention, and wrong exactly here, because `StoreLock` leaves its file behind
+  by design (the kernel releases the lock, not the unlink) and that directory is
+  the one `scripts/genesis/build_manifest.py` hash-audits. Every boot after a
+  real ceremony would have halted at G1.6 with UNTRACKED and UNCLAIMED findings
+  naming the stray lock, and therefore naming the bundle as the cause. The lock
+  now lives under `.intentops/` with the rest of the node's runtime state, where
+  no integrity check counts it. The selftest asserts the audited directory is
+  left with exactly the files it started with.
+
 ### Added — wave 4
 
 - **The gateway token is minted at genesis, and only if it is disclosed**

@@ -382,6 +382,18 @@ probes:
       - path: "config/trust-roots.yaml"
         contains: "roots"
 
+  - id: GEN-ceremony
+    category: organs
+    question: "How is the release root minted, and what may never trigger that ceremony?"
+    covers: [ceremony]
+    expect_in_boot:
+      any_of: ["intentops ceremony", "release-root ceremony"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/ceremony/wizard.py"
+        contains: "CEREMONY_STATE_RELPATH"
+      - path: "docs/CEREMONY-REMEDIATION.md"
+        contains: "exit"
+
   - id: GEN-integrity
     category: organs
     question: "How does this node tell whether the rules it is reading are the ones the project published?"

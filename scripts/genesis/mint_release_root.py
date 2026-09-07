@@ -54,6 +54,7 @@ import argparse
 import getpass
 import hashlib
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -219,6 +220,29 @@ def mint(out: Path, passphrase: Optional[str]) -> dict:
     }
 
 
+def _signing_lock_path(repo_root: Path) -> Path:
+    """Where the imprint signing lock lives -- OUTSIDE the audited bundle.
+
+    Corrected 2026-09-06. This lock used to be
+    ``genesis/imprint/IMPRINT-MANIFEST.lock``: a sibling of the store, which is
+    the house convention and is wrong exactly here. ``genesis/imprint`` is the
+    HASH-AUDITED bundle, so a lock file dropped into it becomes an artifact the
+    manifest does not claim -- and ``StoreLock`` leaves its file behind by
+    design, because the kernel releases the lock, not the unlink.
+
+    The consequence was ceremony-shaped rather than cosmetic: signing the
+    manifest was the LAST step with a gate after it, and the file it left made
+    G1.6 report ``UNTRACKED``/``UNCLAIMED`` on every boot from then on. Genesis
+    halted at G1 with a bundle-drift finding whose actual cause was the signer,
+    which reads as tampering rather than as litter.
+
+    ``.intentops/`` is the node's own runtime directory and is gitignored, so
+    the lock is where every other piece of runtime state lives and where no
+    integrity check counts it.
+    """
+    return repo_root / ".intentops" / "genesis" / "imprint-manifest.lock"
+
+
 def sign_manifest(repo_root: Path, private_key_path: Path,
                   passphrase: Optional[str], signer_key_id: str) -> str:
     """Sign the imprint manifest. Returns the hex signature.
@@ -228,7 +252,7 @@ def sign_manifest(repo_root: Path, private_key_path: Path,
     """
     serialization, _ = _crypto()
     manifest_path = repo_root / MANIFEST_RELPATH
-    with StoreLock(manifest_path.with_suffix(".lock")):
+    with StoreLock(_signing_lock_path(repo_root)):
         text = manifest_path.read_text(encoding="utf-8")   # read INSIDE the lock
         payload = provenance_mod.canonical_imprint_payload(text)
         private = serialization.load_der_private_key(
@@ -242,23 +266,39 @@ def sign_manifest(repo_root: Path, private_key_path: Path,
 
 
 def _with_signature(text: str, signer_key_id: str, signature: str) -> str:
-    """Replace ``signatures: []`` with one entry. HALTs if the shape is absent.
+    """Replace the top-level ``signatures: []`` KEY. HALTs if it is absent.
 
     Deliberately textual: the manifest's GENERATED block is byte-sensitive and
     a YAML round-trip would rewrite it, invalidating the very signature being
     added.
+
+    The match is anchored to a WHOLE LINE at column zero, and is not the first
+    occurrence of the substring. Corrected 2026-09-06: the shipped manifest
+    explains its own empty list, in backticks, in a header comment on line 7 --
+    so a substring replace rewrote the COMMENT and produced a manifest that
+    would not parse, from the one step of the ceremony with no later gate to
+    catch it. G1.7 then reported `unparseable`, which reads as a tampered
+    bundle rather than as a signer that corrupted what it signed. Anchoring is
+    not tidiness here.
     """
-    marker = "signatures: []"
-    if marker not in text:
+    pattern = re.compile(r"^signatures:[ \t]*\[[ \t]*\][ \t]*$", re.MULTILINE)
+    found = pattern.findall(text)
+    if not found:
         raise CeremonyRefused(
-            "the manifest does not carry `signatures: []`; refusing to guess "
-            "where a signature belongs in an already-signed or edited file"
+            "the manifest does not carry a top-level `signatures: []` key; "
+            "refusing to guess where a signature belongs in an already-signed "
+            "or edited file"
+        )
+    if len(found) > 1:
+        raise CeremonyRefused(
+            f"the manifest carries {len(found)} top-level `signatures: []` "
+            "keys; refusing to choose one"
         )
     block = (f"signatures:\n  - key_id: {signer_key_id}\n"
              f"    algorithm: ed25519\n"
              f"    scope: \"{provenance_mod.IMPRINT_SIGNING_SCOPE}\"\n"
              f"    signature: \"{signature}\"")
-    return text.replace(marker, block, 1)
+    return pattern.sub(lambda _m: block, text, count=1)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +353,12 @@ def selftest() -> Tuple[bool, str]:
             "# <<< END GENERATED artifacts\n", encoding="utf-8")
         sign_manifest(repo, tmp / "root.key", "correct horse battery staple",
                       record["key_id"])
+        # The signer must not litter the hash-audited bundle: a lock file left
+        # in genesis/imprint makes G1.6 report drift on every later boot, and
+        # names the bundle rather than the signer as the cause.
+        expect("signing-leaves-no-file-in-the-audited-bundle",
+               sorted(p.name for p in (repo / MANIFEST_RELPATH).parent.iterdir())
+               == [MANIFEST_RELPATH.name])
         doc = {"roots": [{"id": "R", "role": "release_root", "status": "active",
                           "key_id": record["key_id"],
                           "public_key_pem": record["public_key_pem"],
@@ -341,6 +387,24 @@ def selftest() -> Tuple[bool, str]:
             fired.append("missing-signatures-slot-is-refused")
         else:
             failures.append("missing-signatures-slot-is-refused")
+
+        # 7. a COMMENT that mentions the marker is never mistaken for the key.
+        # This defect had shipped: the real manifest explains its empty list in
+        # backticks on line 7, and a substring replace rewrote that comment.
+        commented = ("# `signatures: []` below is the honest state of an "
+                     "unsigned artifact\nstatus: released\nsignatures: []\n")
+        signed = _with_signature(commented, "K", "00")
+        expect("a-comment-naming-the-marker-is-not-the-key",
+               signed.splitlines()[0] == commented.splitlines()[0]
+               and "  - key_id: K" in signed)
+
+        # 8. two real slots is an ambiguity, refused rather than chosen
+        try:
+            _with_signature("signatures: []\nsignatures: []\n", "K", "00")
+        except CeremonyRefused:
+            fired.append("two-signature-slots-is-refused")
+        else:
+            failures.append("two-signature-slots-is-refused")
 
     report = (f"mint_release_root selftest: {len(fired)} paths fired, "
               f"{len(failures)} failed"

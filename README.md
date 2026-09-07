@@ -206,6 +206,14 @@ are **global** flags and must come before the subcommand, and the genesis comman
 Full walkthrough, including what each step actually prints:
 [docs/quick-start.md](docs/quick-start.md).
 
+The halt at G1 is correct and is not a defect: no release-root ceremony has run
+for this build. Performing one is an attended, irreversible act only the
+project's human operator may do, and
+[docs/TRUST-CEREMONY.md](docs/TRUST-CEREMONY.md) is the runbook. The wizard that
+walks it is `intentops ceremony`; when a step fails,
+[docs/CEREMONY-REMEDIATION.md](docs/CEREMONY-REMEDIATION.md) has the numbered
+remedy and `--resume` picks up where it stopped.
+
 ---
 
 ## Documents

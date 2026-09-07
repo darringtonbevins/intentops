@@ -16,6 +16,50 @@ verifier finding, 2026-09-06.)
 
 ---
 
+## The wizard does all of this: `intentops ceremony`
+
+Everything below is the specification. You do not have to hold it in your head:
+
+```
+intentops --repo-root . ceremony --out <PATH OUTSIDE ANY REPOSITORY>
+```
+
+Ten screens, each stating what it is about to do, why, and what it will NOT do.
+It runs the preflight, takes the passphrase without echo, mints both keys via
+the primitives on this page, signs the imprint, shows you the three-carrier
+diff and writes it only after you type `apply the three-carrier edit`, verifies
+G1.7 in a fresh process with the development flag stripped, brings a throwaway
+node up to G7, writes the ceremony record beside your key, and prints the three
+commands you run afterwards. It stages; it never commits.
+
+Every step is journalled to `.intentops/ceremony/ceremony-state.json` and to a
+copy on your medium, with PUBLIC FIELDS ONLY -- no passphrase, no private key,
+no derivative of one. If a step fails you get a numbered remedy from
+`docs/CEREMONY-REMEDIATION.md`, and `intentops ceremony --resume` continues at
+that step without re-minting a key that already exists.
+
+**It changes none of the preconditions below.** It is attended-only by the same
+test the primitives use -- non-TTY refused, `CI` refused, EOF treated as a
+refusal -- and it is never run from a loop tick, a workflow leg, a subagent, a
+container entrypoint, or a scheduled task.
+
+**Two assurance levels, chosen on the first screen and RECORDED, never faked:**
+
+| Level | What it means |
+|---|---|
+| `standard` | Attended, on the operator's own machine, private key encrypted on a medium the operator names. No witness required. |
+| `full` | The ceremony below: offline machine, a named witness present, a clean host. |
+
+The wizard cannot observe whether the room is offline, witnessed, or clean --
+nothing can. So it records what it CAN measure beside what you STATE, and
+attributes the second to you: *"network: operator states cable unplugged; tool
+observed default_route_present=false, resolved_local_addresses=1"*. A record
+that flattened those two into "offline: yes" would be a claim wearing a
+measurement's clothes. If you choose `full` and name no witness, it records the
+sitting as `standard`, because that is the honest label.
+
+---
+
 ## What a release root is, and is not
 
 | | |
