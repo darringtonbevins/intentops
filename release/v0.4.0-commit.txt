@@ -1,0 +1,7 @@
+IntentOps v0.4.0 release evidence
+commit 246cac1355ea0b77667f42ce6f475fb7895e9e3b
+tag v0.4.0
+author Darrington Bevins
+copyright (c) 2026 Darrington Bevins, Apache-2.0
+repository github.com/darringtonbevins/intentops
+release-root authority string intentops-root:v1:sha256:4a9c193315845493c57354235f9655fd2e8f6b3b125da131bede5c4874071a1c:did:key:z6MksgSfTSu4xXwZjw4eVmbKuKis9ahVGRSDNtwDKBQ5DjcW
