@@ -425,3 +425,10 @@ above as lineage: it was recorded before aa89c9c and against a wrong invocation.
 ```
 doctor exit=0; genesis --dry-run --identity-repo new (dev flag) -> final state G7, exit 0; verify -> verified: False, exit 1 (pre-ceremony, honest); stand-down exit 0; genesis without the flag -> HALT at G1, exit 1
 ```
+
+
+## Re-run 2026-09-06 (commit 5218ccf, wave 4) -- verdict unchanged: PASS
+
+```
+doctor exit=0; genesis --dry-run --identity-repo new (dev flag) -> final state G7, exit 0; verify -> verified: False, exit 1 (pre-ceremony); stand-down exit 0; genesis without the flag -> HALT at G1, exit 1
+```

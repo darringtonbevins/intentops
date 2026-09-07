@@ -381,3 +381,10 @@ scanner by file path. The original FAIL record is kept above, unsoftened, as lin
 ```
 1326 passed, 78 skipped in 50.37s (fresh venv outside both repos; git on PATH; resolvable home)
 ```
+
+
+## Re-run 2026-09-06 (commit 5218ccf, wave 4) -- verdict unchanged: PASS
+
+```
+1557 passed, 79 skipped in 79.13s (fresh venv outside both repos; git on PATH; resolvable home)
+```
