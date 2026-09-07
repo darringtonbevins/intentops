@@ -540,12 +540,41 @@ probes:
   - id: GEN-metabolism
     category: organs
     question: "What does this node do on its own cadence, and how does a stage that produced nothing render?"
-    covers: [metabolism, metabolism-cadence, metabolism-heartbeat]
+    covers: [metabolism, metabolism-cadence, metabolism-heartbeat, metabolism-runs]
     expect_in_boot:
       any_of: ["metabolism", "heartbeat", "cadence"]
     truth:
       - path: "packages/intentops-core/intentops_core/metabolism/heartbeat.py"
         contains: "heartbeat"
+
+  - id: GEN-inference
+    category: organs
+    question: "When this node asks a model something, where does that call go, and what stops it leaving this host?"
+    covers: [inference]
+    expect_in_boot:
+      any_of: ["inference", "NullProvider", "model-pool"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/inference/provider.py"
+        contains: "NullProvider"
+      - path: "packages/intentops-core/intentops_core/inference/openai_compat.py"
+        contains: "OpenAICompatHTTPProvider"
+      - path: "packages/intentops-core/intentops_core/metabolism/runner.py"
+        contains: "runs.jsonl"
+      - path: "config/metabolism-prompts.yaml"
+        contains: "metabolism-prompts/v1"
+    note: >-
+      Three answers, and the first is the one a stranger assumes wrongly. It
+      goes NOWHERE by default: `NullProvider` is what a node is born with, it
+      opens no socket, and it records the intent of the call so the stage
+      renders WARN rather than disappearing. When a pool IS declared -- a
+      `kind: model-pool` row in `estate/RESOURCES.yaml`, born `enabled: false`
+      -- the call is one stdlib-urllib POST to an OpenAI-compatible endpoint,
+      with no vendor SDK anywhere in the package. What stops it leaving the
+      host is the endpoint fence: loopback or RFC1918 only, a bare hostname
+      REFUSED unresolved rather than looked up, and `allow_remote: true`
+      requiring a stated reason. The runner spends under a declared
+      token/item envelope and appends every run, including the empty ones, to
+      `.intentops/metabolism/runs.jsonl`.
 
   - id: GEN-gateway
     category: organs
@@ -572,6 +601,98 @@ probes:
       implementation this generalises from defaulted an unclassified tool to
       its backend's tier and auto-approved it, which is the exposure the
       public default-deny ruling closes.
+
+  - id: GEN-token-disclosure
+    category: organs
+    question: "Who mints this node's gateway credential, when, and how would I know whether a human was ever shown it?"
+    covers: [trust]
+    expect_in_boot:
+      any_of: ["gateway token", "disclosed"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/trust/bearer.py"
+        contains: "disclosed_at"
+      - path: "packages/intentops-core/intentops_core/genesis/token_ceremony.py"
+        contains: "SHOWN ONCE"
+      - path: "packages/intentops-core/intentops_core/genesis/machine.py"
+        contains: "mint_disclosed"
+      - path: "packages/intentops-core/intentops_core/genesis/aliveness.py"
+        contains: "gateway_token"
+    note: >-
+      Genesis G2 OFFERS the mint at an attended terminal, prints the plaintext
+      once under a banner, and stores only the SHA-256 digest plus a
+      `disclosed_at` stamp. It never mints from a non-TTY and never in a dry
+      run, because a credential nobody can be shown is worse than none -- it
+      looks armed. All three outcomes land on the birth certificate as a
+      stated fact and never as a check: "minted/disclosed at <ts>", "minted
+      ... not disclosed at genesis (rotated out of band)", or "not minted".
+      An unminted token is a FAIL-CLOSED gateway, which is a posture, so it
+      must not degrade the aliveness verdict. The mint primitive is in the
+      CORE (`intentops_core.trust.bearer`) precisely so genesis can write the
+      gateway's record without importing the gateway.
+
+  - id: GEN-selftests
+    category: organs
+    question: "How does this node prove every one of its own detectors can still fire, in one verb?"
+    covers: [selftests]
+    expect_in_boot:
+      any_of: ["selftest registry", "--all-selftests", "selftest"]
+    truth:
+      - path: "packages/intentops-core/intentops_core/selftests/registry.py"
+        contains: "denominator"
+    note: >-
+      `intentops verify --all-selftests` (or
+      `python -m intentops_core.selftests.registry`). The population is
+      DERIVED from the tree, never listed: every module under `packages/*/`
+      owning a `selftest()` callable and every script under `scripts/`
+      advertising `--selftest`. Each runs in a subprocess with a timeout and
+      stdin closed, so a selftest that waits for a terminal reports rather
+      than hanging -- a selftest that needs a TTY cannot run in CI and is a
+      defect, not a skip. The answer a stranger gets wrong: an instrument
+      that CANNOT run stays in the denominator as ERROR and is never merged
+      into FAIL, because the hand-written lists this replaces went stale in
+      the direction that looked green.
+
+  - id: GEN-backend-transport
+    category: organs
+    question: "When the gate PERMITS a backend call, what actually makes it happen, and what stops it?"
+    expect_in_boot:
+      any_of: ["transport.py", "StdioInvoker", "backend transport"]
+    truth:
+      - path: "packages/intentops-gateway/intentops_gateway/transport.py"
+        contains: "TRANSPORT_DISABLED_RELPATH"
+      - path: "packages/intentops-gateway/intentops_gateway/tools.py"
+        contains: "NullInvoker"
+    note: >-
+      `StdioInvoker` is the only implementation that spawns a process, and it
+      is NOT the default: `NullInvoker` still is, and the transport reaches a
+      node only through `load_gateway_context(invoker=...)`. The answer a
+      stranger gets wrong: that the timeout and the output cap TRUNCATE. They
+      refuse -- the child is killed and the caller is told which cap was hit,
+      because a partial frame returned as a result is the silent-failure shape
+      wearing a success. Two more it gets wrong: the child's environment is
+      BUILT from an allowlist of names and never copied from the parent, and
+      the kill switch is read from disk on every call, because a switch
+      consulted once at startup is a switch that does not work.
+
+  - id: GEN-mcp-reference-client
+    category: organs
+    question: "Has anything ever been shown to HONOUR a deny this node returns, and how much does that prove?"
+    expect_in_boot:
+      any_of: ["reference_client", "reference MCP client", "S2 data point"]
+    truth:
+      - path: "packages/intentops-saddle-mcp/intentops_saddle_mcp/reference_client.py"
+        contains: "PERMITTING_DECISION"
+      - path: "docs/falsifiers/S2-mcp-client-deny-2026-09-06.md"
+        contains: "VERDICT: PASS"
+    note: >-
+      One client, this one, asks `intentops.gate` and performs its effect only
+      on an explicit ALLOW; every other outcome, including one it cannot read
+      at all, leaves the effect uncalled. The answer a stranger gets wrong is
+      the SIZE of the claim: this is not enforcement, and it is not a fact
+      about MCP hosts. The `mcp-hosted` row stays `grade: candidate` with
+      `S2: computed_not_enforced`, and a test fails the build if that is ever
+      promoted on the strength of this repository's own client.
+
 
 # ---------------------------------------------------------------------------
 # Members of the probe-coverage population that legitimately owe no probe row.

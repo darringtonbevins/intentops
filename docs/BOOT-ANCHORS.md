@@ -139,7 +139,29 @@ collections, the embedder seam and the sensitivity **rings**; a node-local
 knowledge store never enters a repository, so `knowledge/MANIFEST.yaml` in the
 identity repo carries pointers only. `intentops_core/metabolism/` is the
 cadence: heartbeat, assimilation, crystallisation -- and a stage that produces
-nothing renders as a flat line, never as green.
+nothing renders as a flat line, never as green. `metabolism/runner.py` is the
+other half of that seam: four workers, one per stage, run ONE stage at a time
+under a declared token/item envelope, with every run -- including the ones that
+produced nothing -- appended to `.intentops/metabolism/runs.jsonl`. It resolves
+a cadence's `callable:` against a CLOSED registry by exact string and imports
+nothing from operator text, and it REFUSES to run a worker behind a `seam:
+"null"` declaration, because the declaration is what a reviewer reads. The
+distill prompt is shipped and reviewed in `config/metabolism-prompts.yaml`, and
+a candidate is graded `INFERRED` always: a generator is not an instrument.
+
+## Inference -- what a model call costs in coupling
+
+`intentops_core/inference/` is the whole of it. `provider.py` holds the
+`Provider` ABC (one method), the `Completion` that says whether its token count
+was REPORTED by the endpoint or ESTIMATED by us, and `NullProvider` -- **the
+default, which contacts nothing**. `openai_compat.py` is one stdlib-`urllib`
+adapter over the OpenAI-compatible chat shape; no vendor SDK is imported
+anywhere. A pool is a `kind: model-pool` row the operator declared in
+`estate/RESOURCES.yaml` (endpoint, model, data_fence, max_tokens, timeout_s,
+enabled) and there is no built-in endpoint. The fence: an endpoint must be
+LOOPBACK or RFC1918 or it is REFUSED, a bare hostname is refused unresolved
+rather than looked up, and leaving that fence needs `allow_remote: true` AND a
+stated `allow_remote_reason`. A pool is born `enabled: false`.
 
 ## The governed tool gateway
 
@@ -151,6 +173,70 @@ permissive default. Requests land in the node's own ledger. A bounded,
 self-describing endpoint surface is a SAFETY property, not merely tidier
 engineering: an agent handed a shell can do anything, and an agent handed
 enumerable endpoints can only do what they expose.
+
+The **gateway token** is minted by a ceremony, never in silence.
+`intentops_core/trust/bearer.py` is the mint primitive -- in the CORE, so
+genesis can write the gateway's record without importing the gateway --
+and `intentops_core/genesis/token_ceremony.py` is the ceremony G2 runs: an
+attended terminal, one question, the plaintext printed ONCE under a banner,
+and only the SHA-256 digest plus a `disclosed_at` stamp kept. It never mints
+from a non-TTY and never in a dry run, because a credential nobody was shown
+looks armed and is not. All three outcomes -- **minted/disclosed at a stated
+time**, minted out of band, or **not minted** -- are stated on the birth
+certificate as a fact, never scored as a check: an unminted token is a
+fail-closed gateway, which is a posture. `intentops-gateway token
+show-digest` reports what is on disk without ever recovering the value;
+`token rotate --yes` replaces it and locks out every existing holder.
+
+## The selftest registry -- one verb that runs every instrument
+
+`packages/intentops-core/intentops_core/selftests/registry.py` is the counter
+for the house rule *every detector ships `--selftest`*. It **derives** the
+population -- every module under `packages/*/` owning a `selftest()` callable,
+plus every script under `scripts/` advertising `--selftest` -- runs each in a
+subprocess with a timeout and stdin closed, and reports
+`name | PASS/FAIL/ERROR/TIMEOUT | duration`. Run it with
+`intentops verify --all-selftests`, or
+`python -m intentops_core.selftests.registry`.
+
+**An instrument that cannot answer stays in the DENOMINATOR as ERROR.** That
+is the whole reason it exists: `verify --selftest` named seven genesis
+instruments by hand and the CI step named ten, and a hand list goes stale in
+the direction that looks green. ERROR is never merged into FAIL either --
+"this detector is broken" and "this detector found something" are different
+findings, and merging them lets a decayed instrument hide inside the failure
+count. A module that advertises `--selftest` without owning a callable is
+reported as a discovery FINDING unless it is declared in `AGGREGATE_CLIS`
+with a reason.
+
+## The backend transport (how a permitted call is actually made)
+
+`packages/intentops-gateway/intentops_gateway/transport.py` is the ONE way a
+permitted backend call becomes a running process. The shipped default is still
+`NullInvoker`, which refuses; `StdioInvoker` reaches a node only through the
+`invoker=` argument of `tools.load_gateway_context`, so wiring it is an ACT and
+never something that happened. It re-checks the registry and its own command
+table at spawn time, reads the kill switch
+`.intentops/gateway/transport-disabled` on EVERY call rather than caching it,
+builds the child's environment from an allowlist of NAMES instead of copying
+`os.environ`, and enforces the timeout and the output cap **by refusing** --
+never by returning what arrived first, because a truncated frame that reads as
+a result is the silent-failure shape. A T3 or T4 call never reaches it at all:
+`tools._dispatch_backend` refuses at the gate first, which is asserted with a
+spy rather than with a message.
+
+## The reference MCP client (the S2 data point)
+
+`packages/intentops-saddle-mcp/intentops_saddle_mcp/reference_client.py` is a
+client that asks `intentops.gate` before it acts and performs its effect only
+on an explicit `ALLOW`. Everything else -- `ASK`, `HALT`, a tool error, an
+unreachable server, a verdict with no decision -- leaves the effect uncalled,
+because a client that treats silence as permission is the failure this project
+is organised around. Its recorded run is
+`docs/falsifiers/S2-mcp-client-deny-2026-09-06.md` (**VERDICT: PASS**), and its
+scope is one client: the `mcp-hosted` saddle's grade stays **candidate** and
+its S2 stays `computed_not_enforced`, because nothing here observes a
+third-party host.
 
 ## Stand-down
 

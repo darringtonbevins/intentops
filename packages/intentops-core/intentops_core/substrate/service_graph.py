@@ -323,6 +323,20 @@ def render_plan(repo_root: Path) -> str:
     return "\n".join(lines)
 
 
+def _default_repo_root() -> Path:
+    """The repository this module was imported from.
+
+    ``<repo>/packages/intentops-core/intentops_core/substrate/service_graph.py``
+    -- FIVE parents up, not four. The four-parent form lands on ``packages/``
+    and every read then resolves against ``packages/deploy/...``, which does
+    not exist, so ``--selftest`` and the bare CLI both died on a ``GraphError``
+    naming a path nobody wrote. Nothing caught it, because the tests and the
+    ``substrate init`` verb all pass an explicit root: the DEFAULT was the one
+    caller nobody exercised. The depth is written once, here, for that reason.
+    """
+    return Path(__file__).resolve().parents[4]
+
+
 def selftest(repo_root: Optional[Path] = None) -> Tuple[bool, str]:
     """Prove every check above can actually fire, on synthetic graphs.
 
@@ -332,7 +346,7 @@ def selftest(repo_root: Optional[Path] = None) -> Tuple[bool, str]:
     """
     import tempfile
 
-    root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[3]
+    root = Path(repo_root) if repo_root else _default_repo_root()
     fired: List[str] = []
     failures: List[str] = []
 
@@ -403,8 +417,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    root = Path(args.repo_root) if args.repo_root else Path(
-        __file__).resolve().parents[3]
+    root = Path(args.repo_root) if args.repo_root else _default_repo_root()
     if args.selftest:
         ok, report = selftest(root)
         print(report)

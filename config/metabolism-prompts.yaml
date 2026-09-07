@@ -1,0 +1,108 @@
+# The metabolism's prompt templates -- SHIPPED, versioned, and fixed.
+#
+# PURPOSE
+#   The distill stage asks a model a question. That question is a governance
+#   surface, not an implementation detail: it decides what a candidate IS, and
+#   therefore what can ever be crystallized. So it is a reviewed file in the
+#   repository, under version control, rather than a string built at runtime.
+#
+#   A prompt assembled in code from fragments cannot be diffed, cannot be
+#   reviewed before it ships, and cannot be pointed at when a run produces
+#   something odd. This file can.
+#
+# WRITE MODEL
+#   Reviewed, human-authored config. ONE writer -- the operator, by hand or
+#   through one explicit generator, one process at a time. No runtime writer
+#   appends a prompt, so no lock is claimed here. A node's runner READS this
+#   file and never writes it.
+#
+# THE ONE RULE THIS FILE IS BUILT AROUND
+#   A model is a generator, not an instrument. Nothing it returns is an
+#   OBSERVATION, so the distill prompt asks for a claim and the condition that
+#   would falsify it, and the runner grades every resulting candidate
+#   `INFERRED` -- never `OBSERVED`, whatever the answer says about itself. A
+#   pipeline that let a generator grade its own output would manufacture
+#   exactly the confidence the evidence-grading rule exists to prevent.
+#
+# THE ANSWER SHAPE IS PARSED DETERMINISTICALLY
+#   The runner reads two labelled lines out of the answer -- `PATTERN:` and
+#   `REOPENS_WHEN:` -- with a plain string scan, no model in the read path. An
+#   answer missing either line is recorded as an INCOMPLETE candidate: kept,
+#   counted in the attempted population, and never crystallized. It is not
+#   repaired, re-asked, or quietly dropped, because a candidate the pipeline
+#   fixed up is a claim nobody made.
+#
+# REQUIRED PER PROMPT -- there are NO defaults. A missing load-bearing field is
+# a HALT, never a substituted sensible value.
+#
+#   id                      the stage this prompt serves
+#   purpose                 one sentence a stranger can act on
+#   max_tokens              the ceiling this prompt asks for. The pool's own
+#                           ceiling still binds; the smaller of the two wins
+#   required_placeholders   every `{name}` the template must carry. A template
+#                           missing one is a HALT at load, not a KeyError at
+#                           the moment of the call
+#   template                the text. `{source}` and `{text}` are substituted
+#                           by the runner and nothing else is
+
+schema: metabolism-prompts/v1
+as_of: "2026-09-06"
+
+prompts:
+  - id: distill
+    purpose: >-
+      Reduce ONE absorbed document to a single falsifiable claim, or say
+      plainly that it carries none.
+    max_tokens: 512
+    required_placeholders:
+      - source
+      - text
+    template: |
+      You are reading one document from a node's own corpus. Reduce it to at
+      most ONE claim that could be wrong, and state what would show it wrong.
+
+      Answer in exactly this shape, with nothing before or after it:
+
+      PATTERN: <one sentence stating the claim, in the document's own terms>
+      REOPENS_WHEN: <the observation that would make that claim false>
+
+      Rules you must follow:
+      - If the document carries no falsifiable claim, answer with the single
+        line NO_CLAIM and nothing else. An empty result is a valid answer and
+        is recorded as one; inventing a claim to fill the shape is not.
+      - Do not summarise. A summary is not a candidate.
+      - Do not cite anything the document does not contain.
+      - Do not describe your own confidence. The grade is assigned outside
+        this answer and is never OBSERVED.
+
+      Document: {source}
+
+      ---
+      {text}
+      ---
+
+  - id: method
+    purpose: >-
+      Name where a crystallized pattern would have to be CALLED for it to have
+      advanced beyond `described`. Recording only; nothing acts on the answer.
+    max_tokens: 256
+    required_placeholders:
+      - source
+      - text
+    template: |
+      Below is one crystallized pattern from a node's own corpus.
+
+      Name, in one line, the place in a system where this pattern would have
+      to be CALLED for it to count as operative rather than merely described.
+      If you cannot name one from the text alone, answer NO_CLAIM.
+
+      Answer in exactly this shape:
+
+      PATTERN: <where it would have to be called>
+      REOPENS_WHEN: <what would show it is not called there>
+
+      Pattern document: {source}
+
+      ---
+      {text}
+      ---

@@ -3,7 +3,9 @@
 PURPOSE
     ``genesis`` brings a clone up as a node. ``doctor`` asks the six birth
     questions again at any time. ``stand-down`` switches it off. ``verify``
-    re-runs provenance. ``gate --selftest`` proves the gate can actually
+    re-runs provenance, and ``verify --all-selftests`` runs every
+    instrument's selftest in the tree rather than the genesis subset.
+    ``gate --selftest`` proves the gate can actually
     refuse. ``interview`` prints the staged alignment plan. ``substrate init``
     renders the service graph and the store schema a node runs on, without
     connecting to either.
@@ -109,6 +111,15 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--json", action="store_true")
     v.add_argument("--selftest", action="store_true",
                    help="prove every genesis instrument can fire")
+    v.add_argument("--all-selftests", action="store_true",
+                   help="run EVERY instrument's selftest in the tree, "
+                        "not just the genesis subset, and report each "
+                        "as name | PASS/FAIL/ERROR/TIMEOUT | duration")
+    v.add_argument("--timeout", type=float, default=None,
+                   help="per-instrument seconds (--all-selftests only)")
+    v.add_argument("--only", default=None,
+                   help="run only instruments whose name contains this "
+                        "(--all-selftests only)")
     v.add_argument("--imprint", action="store_true",
                    help="re-hash the birth bundle and this node's rules copy "
                         "against IMPRINT-MANIFEST.yaml, and name any drift")
@@ -310,6 +321,25 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         else:
             print(report.render())
         return 0 if report.clean else 1
+
+    if getattr(args, "all_selftests", False):
+        # The genesis seven below are a SUBSET, and a hand-written one.
+        # This delegates to the registry, which DERIVES the population
+        # from the tree, so an instrument born tomorrow is run tomorrow
+        # without anyone remembering to add it to a list.
+        from .selftests import registry as selftest_registry
+
+        report = selftest_registry.run_all(
+            root=_repo_root(args),
+            timeout=(args.timeout
+                     if args.timeout is not None
+                     else selftest_registry.DEFAULT_TIMEOUT_S),
+            only=args.only)
+        if args.json:
+            print(json.dumps(report.to_row(), indent=2))
+        else:
+            print(report.render())
+        return 0 if report.ok else 1
 
     if args.selftest:
         failures = 0

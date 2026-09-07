@@ -54,6 +54,11 @@ FALSIFIER_DIR = REPO_ROOT / "docs" / "falsifiers"
 REQUIRED_RECORDS: Dict[str, str] = {
     "F1": "F1-cold-suite",
     "F3": "F3-stranger-genesis",
+    # Added 2026-09-06. S2 is the saddle-registry falsifier -- does a client
+    # HONOUR a deny this server returns. It is listed here for the same reason
+    # as the other two: a falsifier whose record is optional is a falsifier
+    # that quietly stops being run.
+    "S2": "S2-mcp-client-deny",
 }
 
 VERDICT_RE = re.compile(r"^\s*(?:#+\s*|\*\*)?VERDICT:\s*(PASS|FAIL)\b", re.MULTILINE)

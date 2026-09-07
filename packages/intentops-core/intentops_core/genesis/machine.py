@@ -63,6 +63,7 @@ from . import aliveness as aliveness_mod
 from . import organs as organs_mod
 from . import provenance as provenance_mod
 from . import standdown as standdown_mod
+from . import token_ceremony as token_ceremony_mod
 
 __all__ = [
     "GenesisContext",
@@ -757,10 +758,52 @@ def g2_keys(ctx: GenesisContext) -> PhaseResult:
         notes.append(f"private key written outside every repository: {target}")
         notes.append("the key file is passphrase-wrapped (PKCS8, "
                      "BestAvailableEncryption)")
+
+    # The gateway's bearer credential, minted ONLY if it can be disclosed.
+    # It rides G2 because G2 is where this node mints what it is; it is a
+    # separate ceremony because it is a SHARED SECRET and not an identity,
+    # and it declines rather than halts because a node with no gateway token
+    # is fail-closed and fixable, while a genesis that cannot finish is not.
+    disclosure = token_ceremony_mod.mint_disclosed(
+        ctx.node_root,
+        dry_run=ctx.dry_run,
+        attended=_attended(ctx),
+        ask=(None if ctx.dry_run or not _attended(ctx)
+             else (lambda prompt: _ask_about_the_token(ctx, prompt))),
+        out=ctx.out,
+    )
+    notes.append(disclosure.certificate_line())
+
     return PhaseResult("G2", "PASS",
                        {"designation": ctx.designation, "did": did,
                         "storage": storage, "storage_applied": medium,
+                        "gateway_token": disclosure.to_evidence(),
                         "dry_run": ctx.dry_run}, notes)
+
+
+def _ask_about_the_token(ctx: "GenesisContext", prompt: str) -> str:
+    """The G2 gate, with an UNANSWERABLE gate read as a decline.
+
+    ``_gate`` raises :class:`OperatorGateRequired` when the operator cannot
+    be asked -- correct for every gate that must be answered before genesis
+    may continue, and wrong for this one. ``g2_keys``'s own comment and the
+    ceremony's contract both say an undisclosable token is DECLINED and
+    RECORDED, never a halt; ``mint_disclosed`` catches ``EOFError`` and
+    nothing else, so before this wrapper existed the two documents agreed
+    with each other and disagreed with the code, and a genesis run whose
+    stdin passed the TTY check but reached EOF (the Windows ``NUL`` device
+    does exactly that) halted at G2 over an OPTIONAL credential.
+
+    It is re-raised as ``EOFError`` rather than answered ``"n"`` so the
+    record keeps the two apart: an operator who typed no is
+    "declined at the genesis ceremony"; an operator who could not be asked
+    is "the operator gate ended before an answer arrived". Both are
+    no-token; only one of them is a decision.
+    """
+    try:
+        return _gate(ctx, "G2", prompt, "n")
+    except OperatorGateRequired as exc:
+        raise EOFError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

@@ -126,9 +126,9 @@ WRITE_MODELS: Tuple[str, ...] = (
 #: One number, adjacent to the tuple it counts, is the smallest change that
 #: keeps the tripwire: adding an organ without bumping this is a red selftest,
 #: which is exactly what a tripwire is for. It will not notice on its own.
-DECLARED_BIRTH_ENTRIES: int = 24
+DECLARED_BIRTH_ENTRIES: int = 25
 
-#: The twenty-four entries a node holds at birth.
+#: The twenty-five entries a node holds at birth.
 #:
 #: Thirteen come from the design's own tree (genesis, trust, config, logs,
 #: core-review, approvals, witness, still-true, loto, register, locks,
@@ -139,9 +139,10 @@ DECLARED_BIRTH_ENTRIES: int = 24
 #: nothing measures the answering of. The seventeenth is the presence layer's
 #: interaction journal: a node that can be addressed at birth must be able to
 #: say at birth who addressed it. The last two are the metabolism's: its
-#: cadence -- a copy of the shipped template, every stage disabled -- and its
+#: cadence -- a copy of the shipped template, every stage disabled -- its
 #: heartbeat journal, without which a metabolism can report success over zero
-#: work for as long as nobody looks at the series. Two are the gateway's: its
+#: work for as long as nobody looks at the series, and its run ledger, where
+#: a stage run lands whether or not it produced anything. Two are the gateway's: its
 #: request ledger, and its bearer-token record -- the latter ABSENT at birth,
 #: because a token minted silently is a credential nobody was shown, and the
 #: gateway refuses every request until an operator mints one deliberately.
@@ -186,6 +187,11 @@ BIRTH_ORGANS: Tuple[Organ, ...] = (
           "the metabolism heartbeat: promotion flat-line, input-feed-dry and "
           "registry-drift alarms over the dated series -- the only reader that "
           "can see a pipeline reporting success over zero work", seed=""),
+    Organ("metabolism-runs", ".intentops/metabolism/runs.jsonl", "file",
+          "append-only-jsonl",
+          "the metabolism run ledger: one record per stage run, INCLUDING the "
+          "runs that produced nothing -- a run that leaves the population is "
+          "how a metabolism comes to report green over zero", seed=""),
     Organ("loto", ".intentops/loto/LEDGER.yaml", "file",
           "single-writer-ceremony",
           "the tagout oracle: is anything safety-critical switched off"),
@@ -225,11 +231,13 @@ BIRTH_ORGANS: Tuple[Organ, ...] = (
           "stand-down", present_at_birth=False),
     Organ("gateway-token", ".intentops/trust/gateway-auth.json", "file",
           "single-writer-ceremony",
-          "the gateway's bearer check, on every request. ABSENT AT BIRTH BY "
-          "DESIGN: a token minted silently at birth is a credential nobody was "
-          "shown, which looks armed and is not. Until `intentops-gateway token "
-          "rotate` is run the gateway refuses every request -- fail-closed, "
-          "and loudly, with the remedy in the refusal",
+          "the gateway's bearer check, on every request. NOT PRESENT UNLESS "
+          "DISCLOSED: G2 offers the mint at an attended terminal and shows the "
+          "value once, so a dry run, an unattended run, and an operator who "
+          "declines all leave this absent. A token minted silently is a "
+          "credential nobody was shown, which looks armed and is not; absent, "
+          "the gateway refuses every request -- fail-closed, and loudly, with "
+          "`intentops-gateway token rotate --yes` in the refusal",
           present_at_birth=False),
 )
 

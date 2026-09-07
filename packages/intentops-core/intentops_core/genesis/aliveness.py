@@ -108,6 +108,12 @@ class Reading:
     designation: str = ""
     dry_run: bool = False
     stood_down: bool = False
+    #: One sentence about the gateway's bearer credential -- minted and
+    #: disclosed at a stated moment, minted out of band, or not minted. It is
+    #: a STATED FACT and never a check: a node with no gateway token is
+    #: fail-closed, which is a posture, not a defect, so folding it into the
+    #: six answers would make a correct refusal read as a degraded node.
+    gateway_token: str = "gateway token: not read"
 
     @property
     def verdict(self) -> str:
@@ -132,6 +138,7 @@ class Reading:
                 "answered": sum(1 for a in self.answers
                                 if a.status == "ANSWERED"),
                 "checks": len(self.answers),
+                "gateway_token": self.gateway_token,
                 "faculties_absent": self.faculties_absent,
                 "answers": [a.to_row() for a in self.answers]}
 
@@ -397,9 +404,12 @@ def take_reading(
 
     from .standdown import is_stood_down
 
+    from .token_ceremony import certificate_line_for
+
     reading = Reading(as_of=_now(), node_root=str(node_root),
                       designation=designation, dry_run=dry_run,
-                      stood_down=is_stood_down(node_root))
+                      stood_down=is_stood_down(node_root),
+                      gateway_token=certificate_line_for(node_root))
     reading.answers = [
         _check_probes(repo_root, node_root, identity),
         _check_belief_currency(node_root, repo_root, identity),
@@ -423,6 +433,9 @@ def render_certificate(reading: Reading) -> str:
         f"- as of: {reading.as_of}",
         f"- verdict: **{reading.verdict}**",
         f"- questions answered: {answered}/{len(reading.answers)}",
+        # Stated, never scored. "not minted" is a fail-closed gateway, which
+        # is a correct posture and must not read as a missing faculty.
+        f"- {reading.gateway_token}",
     ]
     if reading.dry_run:
         lines.append("- **DRY-RUN**: no ceremony was performed and no private "
@@ -503,6 +516,9 @@ def selftest() -> Tuple[bool, str]:
     expect("certificate-carries-no-health-field", "status: healthy" not in cert)
     expect("certificate-says-how-to-switch-off", "stand-down" in cert)
     expect("certificate-is-marked-generated", "GENERATED" in cert)
+    expect("certificate-states-the-gateway-token", "gateway token:" in cert)
+    expect("an-unminted-token-does-not-degrade-the-verdict",
+           reading_with("ANSWERED", "ANSWERED").verdict == "ALIVE")
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)

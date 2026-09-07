@@ -1,4 +1,4 @@
-"""``intentops metabolism`` -- cadence, heartbeat, crystallize, grok, assimilate.
+"""``intentops metabolism`` -- cadence, heartbeat, crystallize, grok, assimilate, run.
 
 PURPOSE
     The operator surface over the metabolism, and deliberately the only place
@@ -15,6 +15,11 @@ PURPOSE
       ``grok``        record one dry-run cycle; ``--slices`` plans a forge.
       ``assimilate``  decide one request against the four verbs and the
                       artifact boundary.
+      ``run``         run ONE enabled stage through its declared `callable`
+                      seam, under a declared resource envelope. ``--dry-run``
+                      prints the plan and contacts nothing. With no
+                      ``--estate`` the provider is the NULL provider, so the
+                      stage runs, produces nothing, and renders WARN.
 
 WRITE MODEL
     None of its own. ``heartbeat --append`` delegates to the heartbeat's
@@ -41,6 +46,7 @@ from . import cadence as cadence_mod
 from . import crystallize as crystallize_mod
 from . import grok as grok_mod
 from . import heartbeat as heartbeat_mod
+from . import runner as runner_mod
 
 __all__ = ["add_parser", "run", "selftest", "DEFAULT_CADENCE_RELPATH",
            "TEMPLATE_RELPATH"]
@@ -99,6 +105,28 @@ def add_parser(sub: argparse._SubParsersAction) -> argparse.ArgumentParser:
     asm.add_argument("--core-surface", action="store_true")
     asm.add_argument("--json", action="store_true")
     asm.add_argument("--selftest", action="store_true")
+
+    # `run` is the ONLY verb here that can reach a model, and it reaches one
+    # only when an operator has declared a pool, enabled it, and named it. With
+    # no --estate it uses the null provider, which contacts nothing.
+    rn = verbs.add_parser("run",
+                          help="run ONE enabled stage through its declared seam")
+    rn.add_argument("--stage", default=None,
+                    help="absorb | distill | crystallize | method")
+    rn.add_argument("--cadence", default=None)
+    rn.add_argument("--prompts", default=None)
+    rn.add_argument("--estate", default=None,
+                    help="the estate directory holding RESOURCES.yaml; omitted "
+                         "means the null provider")
+    rn.add_argument("--pool", default=None)
+    rn.add_argument("--source-dir", default=None)
+    rn.add_argument("--max-tokens", type=int, default=None)
+    rn.add_argument("--max-items", type=int, default=None)
+    rn.add_argument("--duty-pause", type=float, default=None)
+    rn.add_argument("--dry-run", action="store_true",
+                    help="print the plan; contact nothing, write nothing")
+    rn.add_argument("--json", action="store_true")
+    rn.add_argument("--selftest", action="store_true")
     return parser
 
 
@@ -128,7 +156,7 @@ def run(args: argparse.Namespace, node_root: Path) -> int:
     command = getattr(args, "metabolism_command", None)
     if not command:
         print("usage: intentops metabolism "
-              "{cadence,heartbeat,crystallize,grok,assimilate}")
+              "{cadence,heartbeat,crystallize,grok,assimilate,run}")
         return 0
 
     if command == "cadence":
@@ -157,6 +185,19 @@ def run(args: argparse.Namespace, node_root: Path) -> int:
             return grok_mod.main(["--selftest"])
         return grok_mod.main(_argv(args, "focus", "slices", "out", "json"))
 
+    if command == "run":
+        if args.selftest:
+            return runner_mod.main(["--selftest"])
+        if not getattr(args, "stage", None):
+            print("usage: intentops metabolism run --stage "
+                  "{absorb,distill,crystallize,method} [--dry-run]")
+            return 1
+        argv = ["--node-root", str(node_root)]
+        argv += _argv(args, "stage", "cadence", "prompts", "estate", "pool",
+                      "source-dir", "max-tokens", "max-items", "duty-pause",
+                      "dry-run", "json")
+        return runner_mod.main(argv)
+
     if command == "assimilate":
         if args.selftest:
             return assimilation_mod.main(["--selftest"])
@@ -180,7 +221,8 @@ def selftest() -> tuple:
                      ("heartbeat", heartbeat_mod.selftest),
                      ("crystallize", crystallize_mod.selftest),
                      ("grok", grok_mod.selftest),
-                     ("assimilation", assimilation_mod.selftest)):
+                     ("assimilation", assimilation_mod.selftest),
+                     ("runner", runner_mod.selftest)):
         ok, report = fn()
         reports.append(("PASS " if ok else "FAIL ") + report)
         if not ok:

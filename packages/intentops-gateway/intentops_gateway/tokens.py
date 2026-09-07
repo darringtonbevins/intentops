@@ -22,11 +22,24 @@ PURPOSE
     never diverge -- the digest function and the failure type a caller catches
     -- are IMPORTED from ``intentops_saddle_mcp.auth`` rather than copied.
 
-    ABSENT AT BIRTH, ON PURPOSE. Genesis declares this store; it does not fill
-    it. A token minted silently at birth is a credential nobody was shown,
-    which is indistinguishable from no credential at all except that it looks
-    armed. Until ``intentops gateway token rotate`` is run, every request is
+    MINTED AT BIRTH ONLY IF DISCLOSED (2026-09-06). Genesis declares this
+    store and, at G2, OFFERS to fill it: an attended terminal, a question
+    asked out loud, the plaintext shown once with a banner, and
+    ``disclosed_at`` recorded here. A dry run, an unattended terminal, or an
+    operator who declines all leave it ABSENT -- because a token minted
+    silently is a credential nobody was shown, which is indistinguishable
+    from no credential except that it looks armed. Absent, every request is
     refused -- fail-closed, and loudly, with the remedy in the refusal.
+
+    THE RECORD IS ``.intentops/trust/gateway-auth.json`` (schema
+    ``gateway-auth/v1``), a digest and its provenance, never a credential.
+
+    THE MINT PRIMITIVE LIVES IN THE CORE, and so does the path constant.
+    Genesis writes this record and genesis may not import the gateway, so
+    ``intentops_core.trust.bearer`` owns the mint, the digest, the schema and
+    the relpath, and this module re-exports them. One record, one writer's
+    definition of it, and no pair of constants that agree until one is
+    edited.
 
 WRITE MODEL
     Locked fresh-read read-modify-write (store-write-discipline model 2):
@@ -52,19 +65,17 @@ BLIND SPOTS
 
 from __future__ import annotations
 
-import hmac
-import json
-import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from intentops_core.store_guard import StoreLock, atomic_replace, lock_for
+# Imported, never re-implemented: the mint, the digest, the record shape and
+# the path all have exactly one definition, and it sits in the core so that
+# genesis can perform the ceremony without importing this package.
+from intentops_core.trust import bearer
 
-# Imported, never re-implemented: one definition of "the digest we store", and
-# one exception type a caller can catch across both authenticated surfaces.
-from intentops_saddle_mcp.auth import AuthUnavailable, digest_of
+# One exception type a caller can catch across both authenticated surfaces.
+from intentops_saddle_mcp.auth import AuthUnavailable
 
 __all__ = [
     "AuthUnavailable",
@@ -79,20 +90,16 @@ __all__ = [
 ]
 
 #: Beside the node certificate genesis writes, under the trust directory that
-#: is gitignored by the identity-repo contract.
-RECORD_RELPATH = Path(".intentops") / "trust" / "gateway-auth.json"
+#: is gitignored by the identity-repo contract. Declared in the core.
+RECORD_RELPATH = bearer.GATEWAY_TOKEN_RELPATH
 
-SCHEMA = "gateway-auth/v1"
+SCHEMA = bearer.GATEWAY_TOKEN_SCHEMA
 
-#: 32 bytes of OS entropy, URL-safe: long enough that guessing is not a threat
-#: model, short enough to paste into a client configuration by hand.
-_TOKEN_BYTES = 32
+#: Re-exported so every existing caller keeps working and there is still only
+#: one implementation of "the digest we store".
+digest_of = bearer.digest_of
 
 _REQUIRED_FIELDS = ("schema", "algorithm", "token_sha256")
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 @dataclass(frozen=True)
@@ -105,33 +112,25 @@ class GatewayToken:
     rotation: int = 1
     algorithm: str = "sha256"
     schema: str = SCHEMA
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "algorithm": self.algorithm,
-            "token_sha256": self.token_sha256,
-            "minted_at": self.minted_at,
-            "rotation": self.rotation,
-            "node_root": self.node_root,
-            "note": (
-                "Digest only. The token itself was shown once at mint time and "
-                "is not recoverable from this file; rotate by re-minting."
-            ),
-        }
+    #: When a human was SHOWN this credential, or None. None is not "never" --
+    #: it is "no disclosure was recorded", which is what a token rotated out
+    #: of band looks like, and the two must not be collapsed into one word.
+    disclosed_at: Optional[str] = None
 
     def public(self) -> Dict[str, Any]:
         """What ``status`` may show. Never the digest -- it is not a secret,
         but publishing it hands an offline guesser its oracle for free."""
         return {"minted_at": self.minted_at, "rotation": self.rotation,
-                "algorithm": self.algorithm, "schema": self.schema}
+                "algorithm": self.algorithm, "schema": self.schema,
+                "disclosed_at": self.disclosed_at}
 
 
 def record_path(node_root: Path | str) -> Path:
     return Path(node_root) / RECORD_RELPATH
 
 
-def mint(node_root: Path | str, *, token: Optional[str] = None) -> str:
+def mint(node_root: Path | str, *, token: Optional[str] = None,
+         disclosed_at: Optional[str] = None) -> str:
     """Mint (or rotate) this node's gateway token. Returns the PLAINTEXT, once.
 
     ``token`` is an injection point for tests only; production callers let it
@@ -139,29 +138,31 @@ def mint(node_root: Path | str, *, token: Optional[str] = None) -> str:
     forgets it -- writing it to a file re-introduces exactly the exposure this
     design removes.
 
+    ``disclosed_at`` records that a human was shown the value at that moment.
+    ``rotate`` sets it, because it prints the token to the operator; anything
+    minting without showing must leave it None rather than write a stamp
+    nobody earned.
+
     Rotation is a re-mint: the previous digest is REPLACED, so every holder of
     the old token is locked out at the same instant. That is the intended
     blast radius of a rotation and it is why the count is recorded.
+
+    The write itself is ``intentops_core.trust.bearer.mint`` -- one locked
+    whole-file replace, one record shape, shared with the genesis ceremony.
     """
     node_root = Path(node_root)
-    value = token if token is not None else secrets.token_urlsafe(_TOKEN_BYTES)
-    if not value.strip():
-        raise ValueError("a blank token is not a credential")
-    path = record_path(node_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    previous = 0
     try:
         previous = load_record(node_root).rotation
     except AuthUnavailable:
         previous = 0
-    record = GatewayToken(
-        token_sha256=digest_of(value),
-        minted_at=_now(),
+    value, _record = bearer.mint(
+        record_path(node_root),
+        schema=SCHEMA,
         node_root=str(node_root),
         rotation=previous + 1,
+        token=token,
+        disclosed_at=disclosed_at,
     )
-    with StoreLock(lock_for(path)):
-        atomic_replace(path, json.dumps(record.to_dict(), indent=2) + "\n")
     return value
 
 
@@ -171,51 +172,33 @@ def load_record(node_root: Path | str) -> GatewayToken:
     Every failure mode is NAMED in the message -- absent, unreadable,
     malformed, wrong schema, wrong algorithm -- so an operator repairs the
     right thing instead of re-minting over a permissions problem.
+
+    The validation itself -- absent, unreadable, malformed, wrong schema,
+    wrong algorithm, and a missing load-bearing field that HALTs rather than
+    defaulting -- is ``bearer.read_record``, shared with genesis. Only the
+    absent case is re-worded here, because only this package knows the command
+    that fixes it.
     """
     path = record_path(node_root)
     if not path.is_file():
         raise AuthUnavailable(
             f"no gateway token record at {path}: this node has never minted "
-            "one. Run `intentops gateway token rotate` and give the printed "
-            "value to the client. Until then every request is refused."
+            "one. Run `intentops-gateway token rotate --yes` and give the "
+            "printed value to the client. Until then every request is refused."
         )
     try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise AuthUnavailable(f"gateway token record at {path} is unreadable: {exc}") from exc
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise AuthUnavailable(
-            f"gateway token record at {path} is malformed JSON: {exc}") from exc
-    if not isinstance(data, dict):
-        raise AuthUnavailable(f"gateway token record at {path} is not a JSON object")
-    # A missing load-bearing field HALTs. Substituting a default here would be
-    # a reader that half-understands its own control, which is how a gate goes
-    # green because it stopped looking.
-    for name in _REQUIRED_FIELDS:
-        if not isinstance(data.get(name), str) or not data[name].strip():
-            raise AuthUnavailable(
-                f"gateway token record at {path} is missing the load-bearing "
-                f"field {name!r}; refusing rather than assuming a value"
-            )
-    if data["schema"] != SCHEMA:
-        raise AuthUnavailable(
-            f"gateway token record at {path} declares schema {data['schema']!r}, "
-            f"and this gateway only understands {SCHEMA!r}"
-        )
-    if data["algorithm"] != "sha256":
-        raise AuthUnavailable(
-            f"gateway token record at {path} declares algorithm "
-            f"{data['algorithm']!r}, which this gateway cannot verify; "
-            "refusing rather than guessing"
-        )
+        data = bearer.read_record(path, schema=SCHEMA)
+    except bearer.TokenUnavailable as exc:
+        raise AuthUnavailable(f"gateway token record: {exc}") from exc
     rotation = data.get("rotation")
+    disclosed = data.get("disclosed_at")
     return GatewayToken(
         token_sha256=data["token_sha256"],
         minted_at=str(data.get("minted_at") or ""),
         node_root=str(data.get("node_root") or ""),
         rotation=int(rotation) if isinstance(rotation, int) and rotation > 0 else 1,
+        disclosed_at=disclosed if isinstance(disclosed, str) and disclosed.strip()
+        else None,
     )
 
 
@@ -227,9 +210,7 @@ def verify(node_root: Path | str, presented: Optional[str]) -> bool:
     rather than treating "cannot check" as "checked".
     """
     record = load_record(node_root)
-    if not isinstance(presented, str) or not presented.strip():
-        return False
-    return hmac.compare_digest(digest_of(presented), record.token_sha256)
+    return bearer.matches(presented, record.token_sha256)
 
 
 def bearer_from_header(value: Optional[str]) -> Optional[str]:

@@ -80,6 +80,20 @@ from .grok import (
     plan_forge,
     record_cycle,
 )
+from .runner import (
+    BIRTH_ENVELOPE,
+    CALLABLES,
+    Envelope,
+    Plan,
+    PromptTemplate,
+    RunRecord,
+    RunnerError,
+    append_run,
+    load_prompts,
+    load_runs,
+    plan_stage,
+    run_metabolism_stage,
+)
 from .heartbeat import (
     Alarm,
     COUNTABLES,
@@ -109,4 +123,8 @@ __all__ = [
     # assimilation
     "ARTIFACT_KINDS", "AssimilationError", "Decision", "Request", "Verb",
     "evaluate",
+    # runner -- the other half of the seam cadence.py declares
+    "BIRTH_ENVELOPE", "CALLABLES", "Envelope", "Plan", "PromptTemplate",
+    "RunRecord", "RunnerError", "append_run", "load_prompts", "load_runs",
+    "plan_stage", "run_metabolism_stage",
 ]

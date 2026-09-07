@@ -17,24 +17,250 @@ reading rather than skimming:
 
 The evidence behind every entry: [`docs/BUILD-RECORD-2026-09-06.md`](docs/BUILD-RECORD-2026-09-06.md),
 [`docs/BUILD-RECORD-2026-09-06-wave2.md`](docs/BUILD-RECORD-2026-09-06-wave2.md),
-[`docs/BUILD-RECORD-2026-09-06-wave3.md`](docs/BUILD-RECORD-2026-09-06-wave3.md), and the
+[`docs/BUILD-RECORD-2026-09-06-wave3.md`](docs/BUILD-RECORD-2026-09-06-wave3.md),
+[`docs/BUILD-RECORD-2026-09-06-wave4.md`](docs/BUILD-RECORD-2026-09-06-wave4.md), and the
 recorded falsifier runs in [`docs/falsifiers/`](docs/falsifiers/).
 
 ---
 
 ## [Unreleased]
 
-Seed wave 3 is **built, verified, corrected and unreleased.** The record that backs
-every entry below is [`docs/BUILD-RECORD-2026-09-06-wave3.md`](docs/BUILD-RECORD-2026-09-06-wave3.md),
-which carries the verifier verdicts verbatim with their `claim | refuted | applied`
-triples, the test totals and the gate lines. Unreleased means *not tagged*: nothing here
-has been through a release cut.
+Seed waves 3 and 4 are **built, verified, corrected and unreleased.** The records that
+back the entries below are
+[`docs/BUILD-RECORD-2026-09-06-wave3.md`](docs/BUILD-RECORD-2026-09-06-wave3.md) and
+[`docs/BUILD-RECORD-2026-09-06-wave4.md`](docs/BUILD-RECORD-2026-09-06-wave4.md), which
+carry the verifier verdicts verbatim with their `claim | refuted | applied` triples, the
+test totals and the gate lines. Unreleased means *not tagged*: nothing here has been
+through a release cut.
 
-Measured after the last correction, in this tree: **1,327 tests passing, 77 skipped**
-(962 at the wave-2 tag). Gates: exposure tree and history CLEAN, trust material CLEAN
-(0/284), manifest 15/15, probe coverage complete, estate manifests 6/6 CONFORMANT,
-claims check CLEAN, and a real `genesis --dry-run` in a temp node reaching **G7 PASS**
-with `probes 42/42 PASS, 0 ABSENT`.
+**Measured after the wave-4 corrections, in this tree: 1,558 tests passing, 78 skipped**
+(1,327 after the wave-3 corrections; 962 at the wave-2 tag). Gates: exposure tree CLEAN
+(296 files, 0 UNSCANNED) and history CLEAN (11 commits), trust material CLEAN (0/312),
+manifest 15/15, probe coverage 37/37 with 1 reasoned exemption, estate manifests
+CONFORMANT, claims check CLEAN, `verify --all-selftests` **72/72 PASS** (0 FAIL, 0 ERROR,
+0 TIMEOUT, 0 discovery findings), and a real `genesis --dry-run` in a temp node reaching
+**G7 PASS** with `probes 47/47 PASS, 0 ABSENT`. The wave-3 paragraph this replaces
+carried **1,327 tests and 42 probes** above a section of wave-4 entries -- a measurement
+standing over work it had not measured, which is the shape this file's first rule exists
+to refuse.
+
+### Added — wave 4
+
+- **The gateway token is minted at genesis, and only if it is disclosed**
+  (`packages/intentops-core/intentops_core/trust/bearer.py`,
+  `packages/intentops-core/intentops_core/genesis/token_ceremony.py`). Until now the
+  only mint was `intentops-gateway token rotate --yes`, run out of band some time
+  after birth — so a node came online with an authenticating surface and no
+  authentication, and the operator's first real act was a step nobody had told them
+  about. G2 now OFFERS the mint: an attended terminal, one question defaulting to
+  **no**, the plaintext printed **once** under a banner, and only the SHA-256 digest
+  plus a `disclosed_at` stamp kept.
+  - **It never mints where it cannot disclose.** A dry run records
+    `gateway token: not minted (dry run)`; a non-TTY refuses even when the prompt
+    would consent, because consent from an automated context is not consent; an
+    operator who says nothing has said no. All three leave the record ABSENT, and the
+    gateway stays fail-closed with the remedy in its refusal — which is a posture, not
+    a defect.
+  - **The refusal is recorded, not raised.** An optional credential must never strand
+    a genesis run that would otherwise succeed, so the ceremony declines and says why
+    rather than halting the phase.
+  - **The birth certificate states the outcome and never scores it.** One line:
+    `minted/disclosed at <ts>`, `minted at <ts>, not disclosed at genesis (rotated out
+    of band)`, or `not minted`. It is a stated fact beside the six answers, not a
+    seventh check — folding it in would make a correct fail-closed gateway read as a
+    degraded node.
+  - **The mint primitive moved into the core so the dependency arrow could stay put.**
+    Genesis writes the gateway's record and genesis may not import the gateway, so
+    `intentops_core.trust.bearer` now owns the mint, the digest, the record shape, the
+    schema and the path; `intentops_gateway.tokens` re-exports them. One record and one
+    definition of it, rather than two constants that agree until one is edited.
+  - New verb `intentops-gateway token show-digest` (`--json`) reports what is on disk —
+    digest, rotation, mint and disclosure stamps — and never the token, which is not
+    recoverable. `token rotate` is unchanged except that it now records the disclosure
+    it was already performing.
+  - Probe `GEN-token-disclosure`, a boot anchor in `docs/BOOT-ANCHORS.md`, and
+    `--selftest` on both new modules (14 and 12 refusal paths respectively).
+
+- **The selftest registry** (`packages/intentops-core/intentops_core/selftests/`) — one
+  verb that runs EVERY instrument's selftest, closing the gap wave 3 named. The house
+  rule is *every detector ships `--selftest`*, and the tree obeys it; nothing ran them
+  all. `intentops verify --selftest` enumerated the seven genesis instruments, and the CI
+  job step listed ten by hand. A hand list goes stale in the direction that looks green.
+  The registry **derives** the population instead — every module under `packages/*/`
+  owning a `selftest()` callable, plus every script under `scripts/` advertising
+  `--selftest` — runs each in a subprocess with a timeout and **stdin closed**, and
+  reports `name | PASS/FAIL/ERROR/TIMEOUT | duration`.
+  - **An instrument that cannot answer stays in the denominator as ERROR.** It is never
+    dropped and never merged into FAIL: "this detector is broken" and "this detector
+    found something" are different findings, and merging them lets a decayed instrument
+    hide inside the failure count.
+  - A module advertising `--selftest` with no module-level callable is reported as a
+    discovery FINDING and exits non-zero, unless declared in `AGGREGATE_CLIS` **with a
+    reason** (the two aggregate command surfaces, whose selftests delegate to modules
+    discovered here in their own right).
+  - New verb `intentops verify --all-selftests` (`--only`, `--timeout`, `--json`), and
+    `python -m intentops_core.selftests.registry [--list|--json|--selftest]`.
+  - Its own `--selftest` plants a passing instrument, a failing one, one that raises, one
+    that returns nothing, one demanding an argument, one that never finishes and one that
+    waits for a terminal, and proves each status fires — because a registry whose detector
+    has never fired is the exact thing it exists to catch.
+  - First live run over this tree: **69 instruments discovered, 0 discovery findings**,
+    and it found two real defects on that first run (below).
+
+- **The metabolism can now actually run, and a local model is the only kind it can
+  reach** (`packages/intentops-core/intentops_core/inference/`,
+  `packages/intentops-core/intentops_core/metabolism/runner.py`,
+  `config/metabolism-prompts.yaml`). Every stage shipped `seam: "null"`, so a node's
+  cadence could only SKIP or WARN — the grading was complete and there was nothing to
+  grade. There are now four workers, one per stage: `absorb` over an
+  operator-declared directory, `distill` through a `Provider` call, `crystallize`
+  through the CRYST validator, `method` as records only. Grading stays where it was:
+  the runner returns counts to `cadence.run_stage`, so a worker cannot invent a
+  verdict vocabulary of its own and in particular **cannot render zero output green**.
+  - **The default provider contacts nothing.** `NullProvider` is what a node is born
+    with; it records the intent of each call and returns an empty completion, so a
+    node nobody has declared a pool for runs its distill stage, produces nothing, and
+    renders **WARN** — rather than the stage disappearing from the population.
+  - **The endpoint fence is loopback or RFC1918, and nothing else.** A public host is
+    REFUSED unless the operator declares `allow_remote: true` **and** a stated
+    `allow_remote_reason`; a bare hostname is refused as *unresolved* rather than
+    looked up, because a module whose claim is that it contacts nothing until asked
+    must not perform a DNS lookup to decide. The private set is deliberately narrower
+    than `ipaddress.is_private`, which returns True for the documentation and
+    benchmarking ranges — those are not an operator's own segment.
+  - **A pool is a row the operator declared**, `kind: model-pool` in
+    `estate/RESOURCES.yaml` (endpoint, model, data_fence, max_tokens, timeout_s,
+    enabled), born `enabled: false`. There is no built-in endpoint, no default host,
+    no default port, and **no vendor SDK anywhere in the package** — the transport is
+    stdlib `urllib` over the OpenAI-compatible chat shape, and two tests check both
+    claims mechanically rather than asserting them in prose.
+  - **A token count says how it was arrived at.** `Completion.counted` is `reported`
+    (the endpoint's own usage block), `estimated` (ours, with the method written into
+    `counting_note`), or `none`. An estimate with no stated method is refused at
+    construction. A missing usage block is **not** counted as zero: a zero would let
+    an unmetered endpoint spend against a budget that never moved while the budget
+    read healthy. A run's spend carries three buckets — measured, estimated, and
+    **uncounted** — because folding the null provider's calls into "estimated" would
+    have made a node that contacted nothing report partly-estimated spend.
+  - **A cadence file still cannot become an execution vector.** The cadence loader
+    (`packages/intentops-core/intentops_core/metabolism/cadence.py`) refuses to
+    resolve a dotted path; the runner keeps that property by matching a
+    `callable:` seam against a CLOSED registry by exact string, and it **refuses to
+    run a worker behind a `seam: "null"` declaration** — the declaration is what a
+    reviewer reads, and a stage that says it reaches nothing must not call a model.
+  - **The envelope is a citizenship posture, printed rather than hidden.** Tokens and
+    items per run, plus a duty pause between items; the shipped default is written
+    into every plan and every run record. A run stopped by the envelope says so, and
+    says that what was not distilled is not lost but not yet asked.
+  - **`intentops metabolism run --stage <id> --dry-run`** prints the plan — the
+    provider, its endpoint class, the item counts, the paths it would write — and
+    opens no socket and writes nothing. A plan that cannot run exits non-zero, as do
+    WARN and DEGRADED runs: those are the readings a checklist must not step over.
+  - New birth organ `metabolism-runs` (`.intentops/metabolism/runs.jsonl`,
+    append-only JSONL under `StoreLock`), so a node holds the ledger empty and valid
+    from its first minute; `DECLARED_BIRTH_ENTRIES` 24 → 25. Probe row `GEN-inference`
+    and a `docs/BOOT-ANCHORS.md` section carry the anchors to a fresh window. The
+    distill prompt is a **reviewed, shipped file**, not a string built at runtime, and
+    a candidate is graded `INFERRED` always — a generator is not an instrument.
+
+- **The stdio backend transport, so a permitted call can actually happen**
+  (`packages/intentops-gateway/intentops_gateway/transport.py`, 20 tests in
+  `tests/test_gateway_transport.py`, `--selftest` 10 paths). `NullInvoker` remains the
+  shipped default and `StdioInvoker` reaches a node only through the `invoker=` argument
+  of `load_gateway_context`, so wiring a transport stays an ACT rather than something
+  that happened. It re-checks at spawn time what the dispatcher already checked -- the
+  registry, and its own command table -- because a control that is correct only because
+  of its caller is not a control.
+  - **The caps refuse; they never truncate and never wait.** A timeout and an output cap
+    both kill the child and raise. Returning whatever arrived first would hand the caller
+    a well-formed result over half a frame, which is the silent-failure shape wearing a
+    success.
+  - **The child's environment is BUILT from an allowlist of NAMES**, never a copy of
+    `os.environ`. A gateway that forwards its whole environment hands every child every
+    credential and proxy setting the parent happens to carry, and nothing in the call
+    would show it. A test sets a canary and a proxy variable and asserts neither arrives.
+  - **A T3 call never reaches it**, asserted with a spy that fails the test if `Popen` is
+    called at all -- a refusal message reads identically whether the gate refused first or
+    the transport refused second, so the property is proven by the absence of a spawn,
+    not by a string.
+  - **The kill switch (`.intentops/gateway/transport-disabled`) is read from disk on
+    every call.** A switch consulted once at startup is a switch that does not work.
+
+- **A reference MCP client, and the S2 falsifier it makes recordable**
+  (`packages/intentops-saddle-mcp/intentops_saddle_mcp/reference_client.py`,
+  `docs/falsifiers/S2-mcp-client-deny-2026-09-06.md`, 10 tests, `--selftest` 9 paths).
+  The client asks `intentops.gate` before it acts and performs its effect only on an
+  explicit `ALLOW`; `ASK`, `HALT`, a tool error, an unreachable server and a verdict with
+  no decision all leave the effect uncalled, because a client that treats silence as
+  permission is the failure this project is organised around. Recorded verdict **PASS**,
+  measured live against a real server subprocess over real pipes.
+  - **The claim is deliberately small and the row is unchanged.** `mcp-hosted` stays
+    `grade: candidate` with `S2: computed_not_enforced`, because one client in this
+    repository is not a fact about any third-party host. A test fails the build if that
+    row is ever promoted on the strength of our own client.
+  - **The pass is not vacuous.** A client that never acts honours every deny perfectly,
+    so the permitted action is asserted to really run, and the denied effect is a
+    callable whose absence from the executed list is the evidence.
+  - `S2` joins `F1` and `F3` in `tests/test_falsifier_records.py`: a falsifier whose
+    record is optional is a falsifier that quietly stops being run.
+
+### Changed — wave 4
+
+- **The CI `Run every module selftest` step is no longer a hand-written list.** Ten
+  module names become `python -m intentops_core.selftests.registry`, preceded by a step
+  that proves the registry can report a planted failure before the count it produces is
+  believed. One of the ten (`intentops_core.alignment.calibration`) was being invoked
+  **without** `--selftest` and so ran its default action rather than its detector; the
+  registry runs the callable.
+
+### Fixed — wave 4
+
+- **`substrate.service_graph` could not run from its own entry point.** Its default
+  repository root was `Path(__file__).resolve().parents[3]`, which lands on `packages/`
+  rather than the repository, so `python -m intentops_core.substrate.service_graph`
+  (and `--selftest`, and the CI step that ran it) died on a `GraphError` naming a
+  compose file inside the packages directory instead of the real one at
+  `deploy/docker-compose.genesis.yml` — a location nobody wrote to. Nothing caught it
+  because the tests and the `substrate init` verb all pass an explicit root: **the
+  default was the one caller nobody exercised.** The depth is now written once, in a
+  named `_default_repo_root()` helper carrying the reason. Found by the registry's first
+  live run.
+
+- **The inference adapter's "no egress" claim was broader than its code, in two ways
+  that both moved the prompt off the declared host.** `classify_endpoint` fences the URL
+  an operator declared; it cannot see an ambient proxy variable and it cannot see a
+  redirect. Measured 2026-09-06 against two in-process loopback servers: with `HTTP_PROXY`
+  set, the **entire POST body -- the prompt -- for a declared loopback pool was delivered
+  to the proxy**, the declared server received nothing, and the proxy's reply came back
+  attributed to the declared pool; a `302` produced the same outcome one hop later, and a
+  redirect to a public name triggered an off-host DNS lookup while the error blamed the
+  declared endpoint. The cause was `urllib.request.urlopen`, which installs a
+  `ProxyHandler` built from the ambient environment and CACHES it globally at first use.
+  `openai_compat` now builds its own opener once, with an **empty proxy map** and a
+  redirect handler that raises, and compares the **served origin** (host AND port -- every
+  loopback endpoint shares one hostname) to the declared one after the call, as
+  belt-and-braces for a caller-supplied `opener=`. Three tests drive the proxy, the
+  redirect, and a following opener; the module docstring and the one in
+  `packages/intentops-core/intentops_core/inference/provider.py` now say what the fence
+  does and does not cover.
+- **`metabolism run --selftest` exited 2 with a usage line, on both surfaces.**
+  `--stage` was declared `required=True`, and argparse enforces `required` before any
+  code in `main` runs, so `python -m intentops_core.metabolism.runner --selftest` and
+  `intentops metabolism run --selftest` were both unreachable. The selftest registry
+  never noticed, because it calls the in-process `selftest()` callable -- the only surface
+  that broke was the one an operator actually types, which is a detector that cannot be
+  invoked. `--stage` is now optional at parse time and required after the selftest
+  branch, so a run with neither still HALTs rather than defaulting.
+- **The gateway-token ceremony's contract did not hold, and two documents agreed with
+  each other while disagreeing with the code.** `g2_keys`'s own comment and
+  `token_ceremony`'s docstring both say an undisclosable token is DECLINED and recorded,
+  never a halt; `mint_disclosed` catches `EOFError` and nothing else, while the machine's
+  gate raises `OperatorGateRequired`. A genesis run whose stdin passes the TTY check and
+  then reaches EOF -- which the Windows null device does exactly -- would have halted G2
+  over an OPTIONAL credential. `_ask_about_the_token` now translates that one gate's
+  refusal into `EOFError`, keeping "declined" and "could not be asked" as two different
+  recorded phrases; a positive-control test proves the raw exception really does escape,
+  so the translation is the thing holding the contract up rather than a comment about one.
 
 ### Added — wave 3
 

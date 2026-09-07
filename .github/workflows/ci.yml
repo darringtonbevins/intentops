@@ -64,22 +64,25 @@ jobs:
       - name: Run the test suite
         run: pytest -q
 
-      - name: Run every module selftest
-        # A detector that has never fired is indistinguishable from a broken
-        # one. The suite calls most of these already; running them here means
-        # a selftest that stops firing is visible as its own red step rather
-        # than buried in a test summary.
-        run: |
-          python -m intentops_saddle_claudecode.pre_tool --selftest
-          python -m intentops_saddle_claudecode.observe --selftest
-          python -m intentops_saddle_claudecode.session_start --selftest
-          python -m intentops_core.genesis.integrity --selftest
-          python -m intentops_core.governance.values_council --selftest
-          python scripts/hooks/pre-commit-core-surface.py --selftest
-          python scripts/ops/exposure_gate.py --selftest
-          python -m intentops_core.substrate.schema --selftest
-          python -m intentops_core.substrate.service_graph --selftest
-          python -m intentops_core.alignment.calibration
+      - name: Prove the selftest registry can report a planted failure
+        # Ask the counter to fail on purpose before believing the count it
+        # produces in the next step. A detector that has never fired is
+        # indistinguishable from a broken one -- including this one.
+        run: python -m intentops_core.selftests.registry --selftest
+
+      - name: Run EVERY instrument selftest
+        # This step used to be ten module names, typed by hand. A hand list
+        # goes stale in the direction that looks green: an eleventh
+        # instrument is born and nothing runs it, and nothing says so. The
+        # registry DERIVES the population from the tree instead -- every
+        # module owning a selftest() callable and every script advertising
+        # --selftest -- runs each in a subprocess with a timeout and stdin
+        # closed, and keeps an instrument that CANNOT run in the denominator
+        # as ERROR rather than dropping it.
+        #
+        # It exits non-zero on any FAIL, ERROR, TIMEOUT, or discovery
+        # finding, so this step is red for all four and the log says which.
+        run: python -m intentops_core.selftests.registry
 
       - name: Check the generated store schema has not drifted
         # deploy/schema/genesis.sql is a GENERATED projection of schema.py. A
